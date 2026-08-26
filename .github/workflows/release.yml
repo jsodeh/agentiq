@@ -36,6 +36,8 @@ jobs:
 
       - name: Install Frontend Dependencies
         run: npm install
+        env:
+          GYP_MSVS_VERSION: '2022'
 
       - name: Build Frontend Bundle
         run: npm run build
