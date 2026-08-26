@@ -13,7 +13,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-22.04, windows-latest]
+        include:
+          - platform: "macos-latest"
+            args: "--target-bundle dmg"
+          - platform: "ubuntu-22.04"
+            args: "--target-bundle deb,appimage"
+          - platform: "windows-latest"
+            args: "--target-bundle nsis"
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -36,8 +42,6 @@ jobs:
 
       - name: Install Frontend Dependencies
         run: npm install
-        env:
-          GYP_MSVS_VERSION: '2022'
 
       - name: Build Frontend Bundle
         run: npm run build
@@ -53,3 +57,4 @@ jobs:
           releaseBody: 'See assets below for standalone executables (.dmg, .exe, .AppImage, .deb)'
           releaseDraft: false
           prerelease: false
+          args: ${{ matrix.args }}
