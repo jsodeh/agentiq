@@ -2,6 +2,7 @@
 
 use tauri::{
     Manager, 
+    Emitter,
     menu::{Menu, MenuItem},
     tray::{TrayIconBuilder, TrayIconEvent},
 };
