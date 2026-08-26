@@ -160,7 +160,7 @@ agēntīq is designed to be completely user-friendly. Non-technical business use
 No terminal commands, coding, or technical experience required!
 
 #### 1. Download & Install
-Download the pre-compiled standalone installer for your operating system from the **[Latest agēntīq Releases](../../releases/latest)**:
+Download the pre-compiled standalone installer for your operating system from the **[Latest agēntīq Releases](https://github.com/jsodeh/agentiq/releases/latest)**:
 - 🍏 **macOS**: Download `agentiq-installer.dmg` *(Supports Apple Silicon M1/M2/M3 & Intel)*
 - 🪟 **Windows**: Download `agentiq-setup.exe` *(Windows 10/11 64-bit)*
 - 🐧 **Linux**: Download `agentiq.AppImage` or `agentiq_amd64.deb` *(Ubuntu / Debian / Fedora)*
