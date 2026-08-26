@@ -15,11 +15,11 @@ jobs:
       matrix:
         include:
           - platform: "macos-latest"
-            args: "--target-bundle dmg"
+            args: "-b dmg"
           - platform: "ubuntu-22.04"
-            args: "--target-bundle deb,appimage"
+            args: "-b deb,appimage"
           - platform: "windows-latest"
-            args: "--target-bundle nsis"
+            args: "-b nsis"
 
     runs-on: ${{ matrix.platform }}
     steps:
