@@ -6,6 +6,7 @@ use tauri::{
     tray::{TrayIconBuilder, TrayIconEvent},
 };
 use sysinfo::{System, Disks};
+use tauri_plugin_deep_link::DeepLinkExt;
 use std::process::{Command, Child, Stdio};
 use std::sync::Mutex;
 
@@ -713,9 +714,10 @@ fn main() {
                 .build(app)?;
 
             // Register deep link handler
-            tauri_plugin_deep_link::register("agent", move |_app, matches| {
-                println!("Deep link received: {:?}", matches);
-            })?;
+            #[cfg(desktop)]
+            app.deep_link().on_open_url(|event| {
+                println!("Deep link received: {:?}", event.urls());
+            });
 
             Ok(())
         })
