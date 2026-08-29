@@ -98,7 +98,7 @@ export default function AgentConfig() {
     formState: { errors },
     watch,
     setValue,
-  } = useForm({
+  } = useForm<any>({
     resolver: zodResolver(currentSchema.zodSchema),
     defaultValues: currentSchema.fields.reduce((acc, field) => ({
       ...acc,

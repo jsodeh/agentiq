@@ -48,26 +48,35 @@ export default function AgentSelect() {
       return;
     }
 
-    // Save to Zustand and SQLite
+    // Save to Zustand and persistent storage
     const selectedAgentData = AGENT_TYPES.filter(a => selectedAgents.has(a.id));
+    const newAgents: any[] = [];
     
     for (const agent of selectedAgentData) {
-      // TODO: Save to SQLite via Tauri command
-      addAgent({
-        id: Date.now() + Math.random(),
+      const newAgent = {
+        id: Date.now() + Math.floor(Math.random() * 10000),
         user_id: 1,
         name: agent.name,
         type: agent.category,
-        status: 'stopped',
-        config: JSON.stringify({ agentType: agent.id }),
+        status: 'stopped' as const,
+        config: JSON.stringify({
+          agentType: agent.id,
+          icon: agent.icon,
+          description: agent.description,
+          whatItDoes: agent.whatItDoes,
+        }),
         created_at: new Date().toISOString(),
-      });
+      };
+      addAgent(newAgent);
+      newAgents.push(newAgent);
     }
 
-    // Save to localStorage as backup
+    // Save to localStorage
+    const existing = JSON.parse(localStorage.getItem('agentiq_agents') || '[]');
+    localStorage.setItem('agentiq_agents', JSON.stringify([...existing, ...newAgents]));
     localStorage.setItem('selected_agents', JSON.stringify(Array.from(selectedAgents)));
 
-    navigate('/');
+    navigate('/setup/integrations');
   };
 
   return (
@@ -169,7 +178,7 @@ export default function AgentSelect() {
             disabled={selectedAgents.size === 0}
             className="px-8 py-3 bg-brand hover:bg-opacity-80 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
           >
-            Complete Setup →
+            Continue to Integrations →
           </button>
         </div>
       </motion.div>

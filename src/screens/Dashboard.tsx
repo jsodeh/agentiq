@@ -64,16 +64,23 @@ export default function Dashboard() {
           <h1 className="text-4xl font-bold text-white">
             agēntīq Dashboard
           </h1>
-          <div className="flex gap-4">
+          <div className="flex gap-3">
+            <button
+              onClick={() => navigate('/setup')}
+              className="px-4 py-3 bg-dark border border-midGray hover:border-brand text-midGray hover:text-white rounded-md transition-colors text-sm"
+              title="Re-run hardware check, AI model download, or system setup"
+            >
+              ⚙️ Setup & Hardware
+            </button>
             <button
               onClick={() => setShowTimeline(!showTimeline)}
-              className="px-6 py-3 bg-midGray hover:bg-gray-600 text-white rounded-md transition-colors"
+              className="px-5 py-3 bg-midGray hover:bg-gray-600 text-white rounded-md transition-colors"
             >
               {showTimeline ? 'Hide Timeline' : 'Show Timeline'}
             </button>
             <button
               onClick={() => navigate('/wizard')}
-              className="px-6 py-3 bg-brand hover:bg-opacity-80 text-white rounded-md transition-colors"
+              className="px-6 py-3 bg-brand hover:bg-opacity-80 text-white font-semibold rounded-md transition-colors shadow-lg shadow-brand/20"
             >
               + New Agent
             </button>
@@ -109,14 +116,26 @@ export default function Dashboard() {
         </div>
 
         {agents.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-midGray text-lg">No agents configured yet.</p>
-            <button
-              onClick={() => navigate('/wizard')}
-              className="mt-4 px-6 py-3 bg-brand hover:bg-opacity-80 text-white rounded-md transition-colors"
-            >
-              Create Your First Agent
-            </button>
+          <div className="text-center py-16 bg-dark/40 border border-midGray/40 rounded-2xl p-8 max-w-xl mx-auto">
+            <div className="text-5xl mb-4">🤖</div>
+            <h3 className="text-xl font-bold text-white mb-2">No agents configured yet</h3>
+            <p className="text-midGray text-sm mb-6 max-w-md mx-auto">
+              Select from our 55+ pre-configured AI specialist templates across Sales, Support, Marketing, and Operations, or build a custom agent.
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => navigate('/wizard')}
+                className="px-6 py-3 bg-brand hover:bg-opacity-80 text-white font-semibold rounded-lg transition-colors shadow-lg shadow-brand/20"
+              >
+                + Choose from 55+ Templates
+              </button>
+              <button
+                onClick={() => navigate('/setup')}
+                className="px-5 py-3 bg-dark border border-midGray hover:border-brand text-white rounded-lg transition-colors text-sm"
+              >
+                Run Hardware Setup
+              </button>
+            </div>
           </div>
         )}
       </motion.div>

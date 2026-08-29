@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vitest" />
 
 interface ImportMetaEnv {
   readonly VITE_ANTHROPIC_API_KEY: string;
@@ -15,4 +16,14 @@ declare module 'flutterwave-node-v3';
 declare module 'paystack';
 declare module 'pdfkit';
 declare module 'react-window';
+
+declare namespace Vi {
+  interface Assertion<T = any> {
+    toBeInTheDocument(): Assertion<T>;
+    toBeDisabled(): Assertion<T>;
+  }
+}
+
+
+
 

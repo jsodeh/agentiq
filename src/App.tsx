@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard from './screens/Dashboard';
 import WizardScreen from './screens/WizardScreen';
 import AgentDetail from './screens/AgentDetail';
@@ -11,10 +11,20 @@ import AgentConfig from './screens/setup/AgentConfig';
 import VoiceSetup from './screens/setup/VoiceSetup';
 import Launch from './screens/setup/Launch';
 
+function RootRoute() {
+  const isSetupComplete = localStorage.getItem('setup_complete') === 'true';
+  const hasStoredAgents = Boolean(localStorage.getItem('agentiq_agents') || localStorage.getItem('selected_agents'));
+
+  if (!isSetupComplete && !hasStoredAgents) {
+    return <Navigate to="/setup" replace />;
+  }
+  return <Dashboard />;
+}
+
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Dashboard />} />
+      <Route path="/" element={<RootRoute />} />
       <Route path="/wizard" element={<WizardScreen />} />
       <Route path="/agent/:id" element={<AgentDetail />} />
       <Route path="/setup" element={<ModeSelect />} />
@@ -25,8 +35,10 @@ function App() {
       <Route path="/setup/agent-config" element={<AgentConfig />} />
       <Route path="/setup/voice-setup" element={<VoiceSetup />} />
       <Route path="/setup/launch" element={<Launch />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
 
 export default App;
+

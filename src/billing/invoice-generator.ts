@@ -93,7 +93,7 @@ export class InvoiceGenerator {
     });
   }
 
-  private generateHeader(doc: PDFKit.PDFDocument, data: InvoiceData) {
+  private generateHeader(doc: any, data: InvoiceData) {
     doc
       .fontSize(20)
       .fillColor('#6C3BFF')
@@ -116,7 +116,7 @@ export class InvoiceGenerator {
       .text('INVOICE', 400, 50, { align: 'right' });
   }
 
-  private generateInvoiceDetails(doc: PDFKit.PDFDocument, data: InvoiceData) {
+  private generateInvoiceDetails(doc: any, data: InvoiceData) {
     const y = 180;
 
     doc
@@ -143,7 +143,7 @@ export class InvoiceGenerator {
     }
   }
 
-  private generateCustomerDetails(doc: PDFKit.PDFDocument, data: InvoiceData) {
+  private generateCustomerDetails(doc: any, data: InvoiceData) {
     const y = 180;
 
     doc
@@ -164,7 +164,7 @@ export class InvoiceGenerator {
     }
   }
 
-  private generateLineItems(doc: PDFKit.PDFDocument, data: InvoiceData) {
+  private generateLineItems(doc: any, data: InvoiceData) {
     const tableTop = 300;
     const itemCodeX = 50;
     const descriptionX = 150;
@@ -207,7 +207,7 @@ export class InvoiceGenerator {
     return y;
   }
 
-  private generateTotals(doc: PDFKit.PDFDocument, data: InvoiceData) {
+  private generateTotals(doc: any, data: InvoiceData) {
     const y = 450;
 
     doc
@@ -233,7 +233,7 @@ export class InvoiceGenerator {
       .text(formatPrice(data.total), 490, y + 45);
   }
 
-  private generateFooter(doc: PDFKit.PDFDocument, data: InvoiceData) {
+  private generateFooter(doc: any, data: InvoiceData) {
     const y = 700;
 
     doc
