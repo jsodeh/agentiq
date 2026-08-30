@@ -53,6 +53,7 @@ import { itSupportBotAgent } from './it-support-bot';
 import { assistantAgent } from './assistant';
 import { coderAgent } from './coder';
 import { researcherAgent } from './researcher';
+import { getAgentSetup } from './setup-metadata';
 
 export const AGENT_REGISTRY: Record<string, AgentDefinition> = {
   'lead-gen-maps': leadGenMapsAgent,
@@ -112,11 +113,12 @@ export const AGENT_REGISTRY: Record<string, AgentDefinition> = {
 };
 
 export const getAgentById = (id: string): AgentDefinition | undefined => {
-  return AGENT_REGISTRY[id];
+  const agent = AGENT_REGISTRY[id];
+  return agent ? { ...agent, ...getAgentSetup(agent) } : undefined;
 };
 
 export const getAllAgents = (): AgentDefinition[] => {
-  return Object.values(AGENT_REGISTRY);
+  return Object.values(AGENT_REGISTRY).map((agent) => ({ ...agent, ...getAgentSetup(agent) }));
 };
 
 export const getAgentsByCategory = (category: string): AgentDefinition[] => {

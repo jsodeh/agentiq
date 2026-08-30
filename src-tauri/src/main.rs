@@ -8,6 +8,7 @@ use tauri::{
 };
 use sysinfo::{System, Disks};
 use tauri_plugin_deep_link::DeepLinkExt;
+use std::path::PathBuf;
 use std::process::{Command, Child, Stdio};
 use std::sync::Mutex;
 
@@ -46,11 +47,102 @@ fn stop_all_agents() -> Result<String, String> {
 
 #[tauri::command]
 fn check_ollama() -> Result<bool, String> {
-    // Check if Ollama is installed by running "ollama --version"
-    match Command::new("ollama").arg("--version").output() {
+    match ollama_command().arg("--version").output() {
         Ok(output) => Ok(output.status.success()),
         Err(_) => Ok(false),
     }
+}
+
+#[tauri::command]
+fn prepare_task(description: String) -> Result<serde_json::Value, String> {
+    // Agent selection and capability provisioning happen in the native layer so
+    // the chat UI only needs a natural-language task.
+    let request = description.to_lowercase();
+    let routes: [(&[&str], &str, &str, &[&str]); 10] = [
+        (&["lead", "prospect", "google maps", "business contact"], "lead-gen-maps", "Maps Lead Generator", &["Google Maps search", "Contact enrichment"]),
+        (&["invoice", "payment", "receipt", "bill"], "invoice-generator", "Smart Invoice Generator", &["Invoice creation", "Payment tracking"]),
+        (&["social", "instagram", "linkedin", "post", "content calendar"], "social-media-manager", "Social Media Buzzmaker", &["Content planning", "Social publishing"]),
+        (&["support", "customer", "whatsapp", "complaint"], "customer-support-whatsapp", "WhatsApp Support Hero", &["Customer messaging", "Knowledge response"]),
+        (&["code", "bug", "website", "app", "software"], "coder", "Code Master", &["Code analysis", "Development workspace"]),
+        (&["research", "competitor", "market", "analyse", "analyze"], "market-research-analyst", "Market Research Analyst", &["Web research", "Insight analysis"]),
+        (&["meeting", "calendar", "appointment", "schedule"], "appointment-booker", "Calendar Whiz", &["Calendar access", "Scheduling"]),
+        (&["stock", "inventory", "warehouse", "supply"], "inventory-checker", "Stock Sentinel", &["Inventory monitoring", "Reorder alerts"]),
+        (&["email", "newsletter", "outreach"], "cold-outreach", "Cold Outreach Pro", &["Email drafting", "Lead follow-up"]),
+        (&["project", "task", "timeline", "plan"], "project-manager-ai", "Project Pilot", &["Task planning", "Team coordination"]),
+    ];
+
+    let (agent_id, agent_name, activated_tools) = match routes
+        .iter()
+        .find(|(keywords, _, _, _)| keywords.iter().any(|keyword| request.contains(keyword)))
+    {
+        Some((_, id, name, tools)) => (*id, *name, *tools),
+        None => (
+            "assistant",
+            "Executive Assistant",
+            &["Task orchestration", "Approval safeguards"][..],
+        ),
+    };
+
+    Ok(serde_json::json!({
+        "task_id": format!("task-{}", chrono::Utc::now().timestamp_millis()),
+        "agent_id": agent_id,
+        "agent_name": agent_name,
+        "activated_tools": activated_tools,
+        "status": "prepared",
+    }))
+}
+
+fn ollama_command() -> Command {
+    // The Windows installer updates PATH for future processes only. Prefer its
+    // known per-user location so setup can continue in this same app session.
+    #[cfg(target_os = "windows")]
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let executable = PathBuf::from(local_app_data).join("Programs").join("Ollama").join("ollama.exe");
+        if executable.exists() {
+            return Command::new(executable);
+        }
+    }
+
+    Command::new("ollama")
+}
+
+#[tauri::command]
+async fn download_ollama(app: tauri::AppHandle) -> Result<(), String> {
+    let installer_app = app.clone();
+    let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let _ = installer_app.emit("ollama_install_progress", serde_json::json!({ "stage": "download", "message": "Downloading Ollama runtime" }));
+
+        #[cfg(target_os = "windows")]
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+                "$ErrorActionPreference = 'Stop'; $installer = Join-Path $env:TEMP 'OllamaSetup.exe'; Invoke-WebRequest -UseBasicParsing -Uri 'https://ollama.com/download/OllamaSetup.exe' -OutFile $installer; Start-Process -FilePath $installer -ArgumentList '/S' -Wait"
+            ])
+            .output()
+            .map_err(|error| format!("Could not start the Ollama installer: {error}"))?;
+
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        let output = Command::new("sh")
+            .args(["-c", "curl -fsSL https://ollama.com/install.sh | sh"])
+            .output()
+            .map_err(|error| format!("Could not start the Ollama installer: {error}"))?;
+
+        if !output.status.success() {
+            let details = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(if details.is_empty() { "The Ollama installer exited unsuccessfully".to_string() } else { details });
+        }
+
+        if !ollama_command().arg("--version").output().map(|version| version.status.success()).unwrap_or(false) {
+            return Err("Ollama was installed but could not be started. Restart agēntīq and run Free Mode setup again.".to_string());
+        }
+
+        Ok(())
+    }).await.map_err(|error| format!("Ollama installation task failed: {error}"))?;
+
+    if result.is_ok() {
+        let _ = app.emit("ollama_install_progress", serde_json::json!({ "stage": "complete", "message": "Ollama runtime installed" }));
+    }
+    result
 }
 
 #[tauri::command]
@@ -135,13 +227,13 @@ fn get_gpu_info() -> Result<String, String> {
 
 #[tauri::command]
 fn check_internet() -> Result<bool, String> {
-    // Try to connect to a reliable host
-    match Command::new("ping")
-        .arg("-c")
-        .arg("1")
-        .arg("8.8.8.8")
-        .output()
-    {
+    let mut command = Command::new("ping");
+    #[cfg(target_os = "windows")]
+    command.args(["-n", "1", "8.8.8.8"]);
+    #[cfg(not(target_os = "windows"))]
+    command.args(["-c", "1", "8.8.8.8"]);
+
+    match command.output() {
         Ok(output) => Ok(output.status.success()),
         Err(_) => Ok(false),
     }
@@ -149,34 +241,33 @@ fn check_internet() -> Result<bool, String> {
 
 #[tauri::command]
 async fn download_model(model_id: String, app: tauri::AppHandle) -> Result<(), String> {
-    // Simulate model download with progress events
-    // In production, this would use Ollama's API
-    tokio::spawn(async move {
-        let total_size = 5_000_000_000u64; // 5GB example
-        let chunk_size = 50_000_000u64; // 50MB chunks
-        
-        for downloaded in (0..=total_size).step_by(chunk_size as usize) {
-            let progress = serde_json::json!({
-                "downloaded": downloaded,
-                "total": total_size,
-                "speed": 10_000_000, // 10 MB/s
-                "eta": (total_size - downloaded) / 10_000_000,
-            });
-            
-            let _ = app.emit("download_progress", progress);
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-    });
-    
-    Ok(())
+    if !check_ollama()? {
+        return Err("Ollama is not installed yet".to_string());
+    }
+
+    let model_app = app.clone();
+    let model_name = model_id.clone();
+    let _ = app.emit("download_progress", serde_json::json!({ "downloaded": 0, "total": 0, "speed": 0, "eta": 0, "status": "Starting Ollama model download" }));
+
+    tokio::task::spawn_blocking(move || {
+        ollama_command().args(["pull", &model_name]).output()
+            .map_err(|error| format!("Could not start Ollama: {error}"))
+    }).await.map_err(|error| format!("Model download task failed: {error}"))?
+        .and_then(|output| {
+            if output.status.success() {
+                let _ = model_app.emit("download_progress", serde_json::json!({ "downloaded": 1, "total": 1, "speed": 0, "eta": 0, "status": "Model ready" }));
+                Ok(())
+            } else {
+                let details = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                Err(if details.is_empty() { format!("Ollama could not download {model_id}") } else { details })
+            }
+        })
 }
 
 #[tauri::command]
 fn verify_model_checksum(model_id: String) -> Result<bool, String> {
-    // In production, verify SHA-256 checksum
-    // For now, simulate verification
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    Ok(true)
+    let output = ollama_command().args(["show", &model_id]).output();
+    Ok(output.map(|result| result.status.success()).unwrap_or(false))
 }
 
 #[tauri::command]
@@ -726,7 +817,9 @@ fn main() {
             start_agent,
             stop_agent,
             stop_all_agents,
+            prepare_task,
             check_ollama,
+            download_ollama,
             get_ram_gb,
             get_free_disk_gb,
             get_gpu_info,

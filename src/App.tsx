@@ -10,6 +10,7 @@ import Integrations from './screens/setup/Integrations';
 import AgentConfig from './screens/setup/AgentConfig';
 import VoiceSetup from './screens/setup/VoiceSetup';
 import Launch from './screens/setup/Launch';
+import Workspace from './screens/Workspace';
 
 function RootRoute() {
   const isSetupComplete = localStorage.getItem('setup_complete') === 'true';
@@ -18,7 +19,7 @@ function RootRoute() {
   if (!isSetupComplete && !hasStoredAgents) {
     return <Navigate to="/setup" replace />;
   }
-  return <Dashboard />;
+  return <Navigate to="/workspace" replace />;
 }
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
       <Route path="/setup/agent-config" element={<AgentConfig />} />
       <Route path="/setup/voice-setup" element={<VoiceSetup />} />
       <Route path="/setup/launch" element={<Launch />} />
+      <Route path="/workspace" element={<Workspace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

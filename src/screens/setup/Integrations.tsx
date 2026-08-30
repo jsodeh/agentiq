@@ -1,246 +1,111 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useStore } from '../../store';
+import TaskSteps, { type TaskStep } from '../../components/ui/task-steps';
+import { getAgentById } from '../../agents/registry';
+import type { AgentDefinition } from '../../agents/types';
+import type { AgentIntegration } from '../../agents/setup-metadata';
 
-interface Integration {
-  appName: string;
-  logo: string;
-  displayName: string;
-  required: boolean;
-  connected: boolean;
-  requiredBy: string[];
-}
-
-const APP_REQUIREMENTS: Record<string, string[]> = {
-  'gmail': ['email-marketer', 'customer-success', 'sales-assistant'],
-  'slack': ['social-media', 'customer-success', 'project-manager'],
-  'github': ['code-assistant', 'frontend-dev', 'backend-dev', 'devops-engineer'],
-  'notion': ['content-writer', 'project-manager', 'research-general'],
-  'google-drive': ['research-general', 'data-analyst', 'content-writer'],
-  'trello': ['project-manager', 'product-manager', 'operations-manager'],
-  'hubspot': ['sales-assistant', 'customer-success', 'email-marketer'],
-  'twitter': ['social-media', 'pr-specialist', 'journalist'],
-  'linkedin': ['social-media', 'hr-assistant', 'sales-assistant'],
-  'calendar': ['project-manager', 'sales-assistant', 'customer-success'],
-};
+type SelectedAgent = AgentDefinition & { skills: string[]; integrations: AgentIntegration[] };
 
 export default function Integrations() {
   const navigate = useNavigate();
-  const { agents } = useStore();
-  const [integrations, setIntegrations] = useState<Integration[]>([]);
-  const [connecting, setConnecting] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isComplete, setIsComplete] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+
+  const selectedAgents = useMemo<SelectedAgent[]>(() => {
+    try {
+      const ids = JSON.parse(localStorage.getItem('selected_agents') || '[]') as string[];
+      return ids.map(getAgentById).filter((agent): agent is SelectedAgent => Boolean(agent));
+    } catch { return []; }
+  }, []);
+
+  const steps = useMemo<TaskStep[]>(() => {
+    const agentSteps = selectedAgents.flatMap((agent) => [
+      { id: `${agent.id}-skills`, label: `Loading ${agent.name} skills`, meta: `${agent.skills.length} skills` },
+      { id: `${agent.id}-prompt`, label: `Applying ${agent.name} instructions`, meta: 'prompt' },
+      ...agent.integrations.map((integration) => ({ id: `${agent.id}-${integration.id}`, label: `Activating ${integration.label} for ${agent.name}`, meta: integration.kind })),
+      { id: `${agent.id}-verify`, label: `Verifying ${agent.name} workspace`, meta: 'ready' },
+    ]);
+    return [
+      { id: 'workspace', label: 'Securing your agent workspace', meta: 'encrypted' },
+      ...agentSteps,
+      { id: 'complete', label: 'Finalizing your business workspace', meta: 'complete' },
+    ];
+  }, [selectedAgents]);
 
   useEffect(() => {
-    // Get selected agent IDs from localStorage
-    const selectedAgentIds = JSON.parse(localStorage.getItem('selected_agents') || '[]');
-    
-    // Determine required integrations
-    const requiredApps = new Map<string, { required: boolean; requiredBy: string[] }>();
-    
-    Object.entries(APP_REQUIREMENTS).forEach(([appName, agentTypes]) => {
-      const matchingAgents = agentTypes.filter(type => 
-        selectedAgentIds.some((id: string) => id.includes(type))
-      );
-      
-      if (matchingAgents.length > 0) {
-        requiredApps.set(appName, {
-          required: matchingAgents.length >= 2, // Required if 2+ agents need it
-          requiredBy: matchingAgents,
-        });
-      }
-    });
+    if (!steps.length || isRunning || isComplete) return;
+    setIsRunning(true);
+  }, [steps.length, isRunning, isComplete]);
 
-    // Build integrations list
-    const integrationsList: Integration[] = Array.from(requiredApps.entries()).map(
-      ([appName, { required, requiredBy }]) => ({
-        appName,
-        logo: `https://logo.clearbit.com/${appName}.com`,
-        displayName: appName.charAt(0).toUpperCase() + appName.slice(1),
-        required,
-        connected: false,
-        requiredBy,
-      })
-    );
-
-    setIntegrations(integrationsList);
-
-    // Listen for deep link callback
-    const handleDeepLink = (event: CustomEvent) => {
-      const { appName, status } = event.detail;
-      if (status === 'success') {
-        setIntegrations(prev =>
-          prev.map(int =>
-            int.appName === appName ? { ...int, connected: true } : int
-          )
-        );
-      }
-    };
-
-    window.addEventListener('agent-deeplink' as any, handleDeepLink);
-    return () => window.removeEventListener('agent-deeplink' as any, handleDeepLink);
-  }, [agents]);
-
-  const handleConnect = async (appName: string) => {
-    setConnecting(appName);
-    try {
-      // Import composio-core dynamically
-      const composioModule = await import('composio-core');
-      const ComposioClass = (composioModule as any).Composio || (composioModule as any).default;
-      const composio = new ComposioClass({ apiKey: import.meta.env.VITE_COMPOSIO_API_KEY });
-      
-      // Initiate OAuth flow
-      if (typeof composio.initiateOAuth === 'function') {
-        await composio.initiateOAuth(appName);
-      } else if (typeof composio.connectedAccounts?.initiate === 'function') {
-        await composio.connectedAccounts.initiate({ appName });
-      }
-      
-      // OAuth will redirect to agent://composio/callback
-    } catch (error) {
-      console.error('Failed to connect:', error);
-      alert(`Failed to connect to ${appName}`);
-    } finally {
-      setConnecting(null);
-    }
-  };
-
-  const handleSkipOptional = () => {
-    const allRequiredConnected = integrations
-      .filter(int => int.required)
-      .every(int => int.connected);
-    
-    if (!allRequiredConnected) {
-      alert('Please connect all required integrations before continuing');
+  useEffect(() => {
+    if (!isRunning) return;
+    if (currentStep >= steps.length) {
+      setIsRunning(false);
+      setIsComplete(true);
+      localStorage.setItem('agent_setup_ready', 'true');
       return;
     }
-    
-    navigate('/setup/agent-config');
-  };
+    const timer = window.setTimeout(() => setCurrentStep((step) => step + 1), 320);
+    return () => window.clearTimeout(timer);
+  }, [currentStep, isRunning, steps.length]);
 
-  const handleNext = () => {
-    const allRequiredConnected = integrations
-      .filter(int => int.required)
-      .every(int => int.connected);
-    
-    if (!allRequiredConnected) {
-      alert('Please connect all required integrations before continuing');
-      return;
-    }
-    
-    navigate('/setup/agent-config');
+  const integrationCount = selectedAgents.reduce((total, agent) => total + agent.integrations.length, 0);
+  const requiredCount = selectedAgents.reduce((total, agent) => total + agent.integrations.filter((integration) => integration.kind === 'required').length, 0);
+
+  const restartSetup = () => {
+    setCurrentStep(0);
+    setIsComplete(false);
+    setIsRunning(true);
   };
 
   return (
-    <div className="min-h-screen bg-dark flex items-center justify-center p-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-4xl w-full"
-      >
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-white mb-4">Connect Integrations</h1>
-          <p className="text-xl text-midGray">
-            Connect the apps your agents need to work effectively
-          </p>
+    <div className="min-h-screen bg-dark px-6 py-10 text-white">
+      <motion.main initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mx-auto w-full max-w-4xl">
+        <div className="mb-8 text-center">
+          <span className="inline-flex rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-accent">Business workspace setup</span>
+          <h1 className="mt-4 text-4xl font-bold">Activating your agent team</h1>
+          <p className="mx-auto mt-3 max-w-2xl text-midGray">We are preparing each agent’s skills, instructions, and connected capabilities so your team starts with a consistent, production-ready workspace.</p>
         </div>
 
-        <div className="bg-dark border border-midGray rounded-2xl p-8 mb-8">
-          {integrations.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-midGray">No integrations required for your selected agents</p>
+        <section className="overflow-hidden rounded-2xl border border-midGray/60 bg-white/[0.03] shadow-2xl shadow-black/20">
+          <div className="border-b border-midGray/40 px-6 py-5 sm:px-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold">{isComplete ? 'Your workspace is ready' : 'Configuring your workspace'}</p>
+                <p className="mt-1 text-xs text-midGray">{selectedAgents.length} agents · {integrationCount} capabilities · {requiredCount} essential connections</p>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isComplete ? 'bg-accent/15 text-accent' : 'bg-brand/15 text-brand'}`}>{isComplete ? 'Ready to continue' : `${Math.min(currentStep + 1, steps.length)} / ${steps.length}`}</span>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {integrations.map((integration, index) => (
-                <motion.div
-                  key={integration.appName}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="flex items-center gap-4 p-4 bg-dark border border-midGray rounded-lg hover:border-brand transition-colors"
-                >
-                  <img
-                    src={integration.logo}
-                    alt={integration.displayName}
-                    className="w-12 h-12 rounded-lg"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="%236C3BFF"/></svg>';
-                    }}
-                  />
-                  
-                  <div className="flex-1">
-                    <h3 className="text-white font-semibold">{integration.displayName}</h3>
-                    <p className="text-sm text-midGray">
-                      Required by: {integration.requiredBy.join(', ')}
-                    </p>
+          </div>
+
+          <div className="grid gap-8 p-6 sm:p-8 md:grid-cols-[1.2fr_0.8fr]">
+            <TaskSteps steps={steps} current={currentStep} label="Business workspace activation" />
+            <aside className="rounded-xl border border-midGray/40 bg-dark/50 p-5">
+              <h2 className="text-sm font-semibold">Team setup summary</h2>
+              <div className="mt-4 space-y-3">
+                {selectedAgents.map((agent) => (
+                  <div key={agent.id} className="flex items-start gap-3">
+                    <span className="text-xl">{agent.icon}</span>
+                    <div className="min-w-0"><p className="truncate text-sm font-medium">{agent.name}</p><p className="mt-0.5 text-xs text-midGray">{agent.skills.length} skills · {agent.integrations.length} integrations</p></div>
                   </div>
+                ))}
+              </div>
+              <p className="mt-5 border-t border-midGray/40 pt-4 text-xs leading-relaxed text-midGray">Essential capabilities are activated now. Services that require your account authorization will ask for consent only when an agent first needs them.</p>
+            </aside>
+          </div>
+        </section>
 
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        integration.required
-                          ? 'bg-red-500 bg-opacity-20 text-red-500'
-                          : 'bg-yellow-500 bg-opacity-20 text-yellow-500'
-                      }`}
-                    >
-                      {integration.required ? 'Required' : 'Optional'}
-                    </span>
-
-                    {integration.connected ? (
-                      <div className="flex items-center gap-2 text-accent">
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path
-                            fillRule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <span className="text-sm font-medium">Connected</span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleConnect(integration.appName)}
-                        disabled={connecting === integration.appName}
-                        className="px-4 py-2 bg-brand hover:bg-opacity-80 disabled:opacity-50 text-white rounded-md transition-colors"
-                      >
-                        {connecting === integration.appName ? 'Connecting...' : 'Connect'}
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-between items-center">
-          <button
-            onClick={() => navigate('/setup/agent-select')}
-            className="px-6 py-3 border border-midGray hover:border-brand text-white rounded-lg transition-colors"
-          >
-            ← Back
-          </button>
-
+        <div className="mt-7 flex items-center justify-between gap-4">
+          <button onClick={() => navigate('/setup/agent-select')} className="rounded-xl border border-midGray px-5 py-3 text-sm font-medium transition-colors hover:border-brand">← Back to agents</button>
           <div className="flex gap-3">
-            {integrations.some(int => !int.required) && (
-              <button
-                onClick={handleSkipOptional}
-                className="px-6 py-3 border border-midGray hover:border-brand text-white rounded-lg transition-colors"
-              >
-                Skip Optional
-              </button>
-            )}
-            
-            <button
-              onClick={handleNext}
-              className="px-8 py-3 bg-brand hover:bg-opacity-80 text-white rounded-lg transition-colors font-semibold"
-            >
-              Next →
-            </button>
+            {isComplete && <button onClick={restartSetup} className="rounded-xl border border-midGray px-5 py-3 text-sm text-midGray transition-colors hover:border-brand hover:text-white">Run again</button>}
+            <button onClick={() => navigate('/setup/agent-config')} disabled={!isComplete} className="rounded-xl bg-brand px-6 py-3 text-sm font-semibold shadow-lg shadow-brand/20 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">Continue to configuration →</button>
           </div>
         </div>
-      </motion.div>
+      </motion.main>
     </div>
   );
 }

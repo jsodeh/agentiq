@@ -29,6 +29,7 @@
     "framer-motion": "^11.15.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
+    "lucide-react": "^1.37.0",
     "p-queue": "^8.0.1",
     "paystack": "^2.0.1",
     "pdfkit": "^0.18.0",

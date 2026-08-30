@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { OnboardingForm, type AccountProfile } from '../../components/ui/onboarding-form';
 
 // ─── Region-based pricing helper ───────────────────────────────────────────
 interface RegionPricing {
@@ -67,6 +68,8 @@ export default function ModeSelect() {
   // Modal states
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [showSubModal, setShowSubModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
 
   // Setup timeline
   const [setupSteps, setSetupSteps] = useState<SetupStep[]>(INITIAL_SETUP_STEPS);
@@ -92,6 +95,26 @@ export default function ModeSelect() {
     setShowSetupModal(true);
   };
 
+  const continueToWorkspace = () => {
+    if (localStorage.getItem('user_profile')) {
+      navigate('/workspace');
+      return;
+    }
+    setShowProfileModal(true);
+  };
+
+  const saveProfile = (profile: AccountProfile) => {
+    setSavingProfile(true);
+    localStorage.setItem('user_profile', JSON.stringify({ ...profile, createdAt: new Date().toISOString() }));
+    window.setTimeout(() => {
+      setSavingProfile(false);
+      setShowProfileModal(false);
+      setShowSetupModal(false);
+      setShowSubModal(false);
+      navigate('/workspace');
+    }, 250);
+  };
+
   const runSetupTimeline = async () => {
     setSetupRunning(true);
 
@@ -115,7 +138,7 @@ export default function ModeSelect() {
         await invoke('download_ollama');
         updateStep('ollama-install', { status: 'done', detail: 'Ollama installed successfully' });
       } catch (err) {
-        updateStep('ollama-install', { status: 'error', detail: `Install failed: ${err}. You can install manually from https://ollama.com` });
+        updateStep('ollama-install', { status: 'error', detail: `Automatic install failed: ${err}. Check your internet connection and retry.` });
         setSetupRunning(false);
         return;
       }
@@ -128,8 +151,10 @@ export default function ModeSelect() {
       // Simulate progress via events – the backend emits download_progress
       await delay(1500);
       updateStep('model-pull', { status: 'done', detail: 'llama3.2:3b ready' });
-    } catch {
-      updateStep('model-pull', { status: 'done', detail: 'Model will be downloaded on first run' });
+    } catch (err) {
+      updateStep('model-pull', { status: 'error', detail: `Model download failed: ${err}` });
+      setSetupRunning(false);
+      return;
     }
 
     // Step 4 – device check
@@ -172,7 +197,7 @@ export default function ModeSelect() {
     localStorage.setItem('subscription_tier', tier);
     localStorage.setItem('billing_cycle', billingCycle);
     localStorage.setItem('setup_complete', 'true');
-    navigate('/setup/agent-select');
+    continueToWorkspace();
   };
 
   // ── Status icon for timeline ───────────────────────────────────────
@@ -407,7 +432,7 @@ export default function ModeSelect() {
                 )}
                 {setupComplete && (
                   <button
-                    onClick={() => navigate('/setup/agent-select')}
+                    onClick={continueToWorkspace}
                     className="px-6 py-2.5 bg-accent hover:bg-accent/80 text-dark text-sm font-bold rounded-xl transition-colors shadow-md shadow-accent/20"
                   >
                     Continue to Agent Selection →
@@ -561,6 +586,14 @@ export default function ModeSelect() {
                 </p>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showProfileModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-5 backdrop-blur-sm">
+            <OnboardingForm onSubmit={saveProfile} isSubmitting={savingProfile} buttonText="Continue to workspace" />
           </motion.div>
         )}
       </AnimatePresence>

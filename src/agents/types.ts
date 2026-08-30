@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AgentIntegration } from './setup-metadata';
 
 export interface AgentDefinition {
   id: string;
@@ -12,6 +13,8 @@ export interface AgentDefinition {
   defaultConfig?: any;
   composioTools?: string[];
   tools?: string[];
+  skills?: string[];
+  integrations?: AgentIntegration[];
 }
 
 export interface AgentConfig {
