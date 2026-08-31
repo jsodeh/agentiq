@@ -1,0 +1,360 @@
+Now I have a thorough understanding of the entire codebase. Let me compile the complete analysis.Now let me read a few more specific files to complete the picture before writing the walkthrough:I now have a comprehensive picture of the entire codebase. Let me write the full walkthrough:Here's the complete walkthrough and summary of **agēntīq** — from cold install to active workspace.
+
+---
+
+## Tech Stack at a Glance
+
+| Layer | Technology |
+|---|---|
+| Desktop shell | Tauri 2 (Rust host, Chromium webview) |
+| Frontend | React 18 + TypeScript 5.7, Vite 6 |
+| Routing | react-router-dom v6 |
+| State | Zustand v5 (in-memory) + localStorage (persistence) |
+| Styling | Tailwind CSS v3, custom dark palette (`bg-dark`, `text-midGray`, `bg-brand`, `bg-accent`) |
+| Animation | Framer Motion v11 |
+| Forms | react-hook-form v7 + Zod v3 |
+| AI – Cloud | Anthropic Claude (`claude-sonnet-4-20250514`) |
+| AI – Local | Ollama HTTP API (`llama3.2:3b` default) |
+| Tool integration | Composio Core v0.5 (~100+ SaaS connectors) |
+| Browser automation | Playwright v1.48 |
+| Voice – Cloud | Deepgram STT + ElevenLabs TTS |
+| Voice – Local | `@xenova/transformers` (Whisper WASM) + Coqui TTS |
+| Database | SQLite via better-sqlite3, WAL mode, 15 tables |
+| Background tasks | p-queue (concurrency 3), cron |
+| Payments | Paystack + Flutterwave |
+| Icons | lucide-react |
+
+---
+
+## App Flow: First Install → Mode Selection → Dashboard
+
+### 1. First Launch
+
+The app entry point is `src/main.tsx`, which mounts a `BrowserRouter`-wrapped `<App />`. Every time the app opens, `App.tsx` immediately evaluates `RootRoute`:
+
+```ts
+const isSetupComplete = localStorage.getItem('setup_complete') === 'true';
+const hasStoredAgents = Boolean(localStorage.getItem('agentiq_agents') || localStorage.getItem('selected_agents'));
+```
+
+- If neither is true → redirected to `/setup` (ModeSelect)
+- If either is true → redirected to `/workspace`
+
+On a brand-new install, both are empty, so the user always lands on ModeSelect.
+
+---
+
+### 2. Mode Selection — `/setup` (ModeSelect.tsx)
+
+The first screen is a centered, dark full-screen layout with the heading "Welcome to agēntīq" and two side-by-side cards, animated in with a fade+slide via Framer Motion.
+
+**Free Mode card** (left, purple-accented)
+- Sells local AI: complete privacy, no recurring cost, works offline after setup
+- Shows system requirements inline: 8 GB+ RAM, ~2.5 GB download, 10 GB disk
+- CTA: "Set Up Free →"
+
+**Business Mode card** (right, green-accented, "Recommended" badge)
+- Sells cloud AI with a subscription
+- CTA opens a pricing/subscription modal
+
+**Choosing Free Mode** triggers a 5-step animated timeline modal:
+1. `Check Ollama Installation` — calls `invoke('check_ollama')` via Tauri
+2. `Install Ollama` — calls `invoke('download_ollama')` if not found (~120 MB)
+3. `Pull Default AI Model` — calls `invoke('download_model', { modelId: 'llama3.2:3b' })` (~2 GB)
+4. `System Hardware Check` — parallel calls to `invoke('get_ram_gb')`, `invoke('get_free_disk_gb')`, `invoke('get_gpu_info')`; requires ≥4 GB RAM, ≥10 GB disk to proceed
+5. `Finalize Configuration` — writes `deployment_mode=local` and `setup_complete=true` to localStorage
+
+Each step shows a spinning ring while running, a green ✓ tick when done, a red ✗ with detail on error, or a `—` dash if skipped. If Ollama was already installed, step 2 is skipped automatically.
+
+**Choosing Business Mode** opens a subscription modal with:
+- Monthly / Annual billing toggle
+- Three tier cards: Starter / Professional / Enterprise
+- Pricing is auto-detected by timezone (8 currencies: NGN, GHS, KES, ZAR, USD, GBP, EUR, INR)
+- Clicking any tier writes `deployment_mode=cloud`, `subscription_tier`, `billing_cycle`, `setup_complete=true` to localStorage
+
+After either path finishes, an **OnboardingForm modal** slides in asking for:
+- Username (required)
+- Avatar photo (optional)
+
+Saved to `localStorage.user_profile`. Then the user is navigated to `/workspace`.
+
+---
+
+### 3. The Alternative Full Setup Wizard (reached via the setup path)
+
+This is a longer, more structured alternative to the quick ModeSelect flow. It's accessible from the Dashboard's "Setup & Hardware" button or by manually navigating to the sub-routes. Steps:
+
+**`/setup/device-check`** — System check screen
+- Four parallel `invoke()` calls for RAM, disk, CPU, and internet
+- Each check gets a green/amber/red status badge
+- Auto-advances to `/setup/model-select` on pass/warn
+
+**`/setup/model-select`** — AI Model download
+- Three model choices: `llama3.2:3b` (2 GB, fast), `llama3.2:8b` (5 GB, smarter), `llama3.1:70b` (40 GB, requires 64 GB RAM)
+- Download is a real Tauri-invoked operation with SHA-256 hash verification; progress comes back via Tauri events
+- Saves `selected_model` to localStorage, navigates to `/setup/agent-select`
+
+**`/setup/agent-select`** — Agent selection
+- Full filterable grid of all 55+ agents from the registry
+- Top search bar + horizontal category pill filter (Sales, Support, Operations, Marketing, Finance, HR, Productivity, Legal, Coding, Research, Logistics)
+- Each card shows: category icon, agent name, 2-line description, up to 3 integration icons, category label
+- Selection toggled by clicking; selected state shows a brand-colored border + check badge
+- A sticky footer counts selected agents and the "Activate N agents →" button is disabled until at least one is chosen
+- On confirm: creates agent objects, writes to `localStorage.agentiq_agents` and `selected_agents`, adds to Zustand store, navigates to `/setup/integrations`
+
+**`/setup/integrations`** — Animated activation sequence
+- Reads `selected_agents` from localStorage, hydrates each from the registry
+- Builds a flat list of `TaskStep` items: for each agent → load skills → apply instructions → activate each integration → verify workspace; plus a first "Securing workspace" step and a final "Finalizing" step
+- Steps auto-advance every 320ms (purely visual / simulated — no real OAuth happens here)
+- Right panel shows a "Team setup summary" sidebar with each agent's icon, name, skill count, and integration count
+- A note says: "Services requiring account authorization will ask for consent only when an agent first needs them."
+- "Continue" button appears when complete, navigates to `/setup/agent-config`
+
+**`/setup/agent-config`** — Per-agent configuration
+- Renders a dynamic form for each selected agent using react-hook-form + Zod schemas
+- Dynamic field types: slider, toggle, select, text input, file upload, time-range picker
+- Currently has full schemas for `research-general`, `code-assistant`, `email-marketer`; all others fall back to `research-general` schema
+- Saves via `invoke('save_agent_configs')`, navigates to `/setup/voice-setup`
+
+**`/setup/voice-setup`** — Voice configuration
+- Configures local (Whisper/Coqui) vs cloud (Deepgram/ElevenLabs) voice I/O
+- Saves `voice_config` to localStorage
+
+**`/setup/launch`** — Final launch screen
+- Reads all localStorage keys and builds a visual `SetupTimeline` checklist showing which setup phases were completed vs pending
+- "Launch Your Team" button calls `invoke('start_orchestrator')`, waits 2 seconds for animation, sets `setup_complete=true`, navigates to `/?onboarding=true` (which lands at `/workspace`)
+
+---
+
+### 4. The Workspace — `/workspace` (Workspace.tsx + BoltStyleChat.tsx)
+
+This is the **primary post-onboarding UI**. It's intentionally minimal — a single chat interface.
+
+**Layout:**
+- Deep dark background (`#0f0f12`) with a large radial purple glow ring and gradient behind it
+- Collapsible left sidebar (`WorkspaceSidebar`) — shows a vertical icon rail at 56px wide that expands to 224px when open. Navigation items: New task, Workspace, Activity, Agents, History, Settings, Profile
+- Floating bottom pill (`WorkspaceBottomMenu`) — slides up from bottom-right with quick-action icons
+- Header bar: agēntīq logo + "Autonomous workspace" badge
+- Main content area: empty state with "What would you like to get done?" hero text + gradient headline, or a message thread when tasks have been submitted
+
+**Empty State:** Centered hero with a large gradient heading "What would you like to get done?" and a description: "Describe the outcome. agēntīq will select the right specialist, prepare the capabilities it needs, and begin the work." If `username` is in localStorage, shows "Ready when you are, @username".
+
+**Input Area (pinned to bottom):**
+- Textarea (auto-resizes up to 180px) with `Enter` to send, `Shift+Enter` for newlines
+- Left: `+` (attachments) and `📎` (attachments, both show "coming soon" toast)
+- Model selector dropdown: Balanced (Sparkles), Fast (Zap), Deep reasoning (Brain) — cosmetic only, doesn't change the actual model used
+- Right: "Agent selected automatically" label + Send button
+- Sending a message calls `invoke('prepare_task', { description })` on the Tauri backend
+
+**Message Thread:**
+- User messages: right-aligned, purple `bg-brand` bubble
+- Assistant messages: left-aligned, subtle glass `bg-white/[0.045]` card with green `text-accent` meta line showing which tools are activated
+- Working state: pulsing green dot + "Preparing the right agent and tools…" text
+- Scroll-to-bottom is automatic on new messages
+
+**Navigation toasts:** Clicking sidebar items for non-implemented sections shows a brief bottom-left toast ("Activity is coming soon."), auto-dismissed after 2.6 seconds.
+
+**Error boundary:** A `WorkspaceBoundary` class component wraps the whole workspace. If the UI throws, it shows a centered card with "Your workspace needs a refresh" and an "Open workspace" button.
+
+---
+
+### 5. The Dashboard — `/` implied, accessible via nav (Dashboard.tsx)
+
+The Dashboard is a legacy/alternative view accessible via the `/wizard` route's back-navigation or the "Dashboard" label in the sidebar. It shows operational status.
+
+**Layout:**
+- Max-width `7xl` centered container, `p-8` padding
+- Header row: "agēntīq Dashboard" title + three action buttons: "⚙️ Setup & Hardware", "Show/Hide Timeline", "+ New Agent"
+- `EscalationPanel` component at the top: shows any pending escalations requiring human approval. Currently receives an empty array (stub).
+- Toggleable `TimelineView`: animated height collapse/expand, height 600px. A virtualized log and event timeline for seeing agent activity chronologically.
+- `AgentStatusGrid`: grid of `AgentStatusCard` components — each card shows agent name, type, status badge (idle/running/paused/error), `tasksToday` count, `lastAction` string, `lastRunTime`. Cards are clickable and have start/stop controls.
+- Clicking an agent card sets `selectedAgentId` → slides in `AgentDetailPanel` from the right, which shows the agent's tasks and logs tabs.
+- Empty state: large 🤖 emoji, "No agents yet" heading, "Go to Setup" and "Create Agent" CTAs.
+
+---
+
+### 6. Agent Creation Wizard — `/wizard` (WizardScreen.tsx)
+
+A 3-step flow for creating a new agent at any time after setup.
+
+**Step 1 — Choose template:**
+- Search bar + category filters at top
+- Grid of all 55 agent cards (same visual as AgentSelect) + a "Create Custom Agent" card at the end (lightning bolt icon)
+- Clicking a template pre-fills all step 2 fields from the registry definition
+- Clicking "Create Custom Agent" starts with blank defaults
+
+**Step 2 — Configure:**
+- Agent name, icon (emoji), description
+- Full system prompt textarea (editable even when from a template)
+- Composio tools list (display only, greyed text)
+- Browser automation toggle, Voice toggle
+- Autonomy level: Low / Medium / High segmented control
+- Escalation threshold: 0–100 slider
+- "Back" and "Review →" buttons
+
+**Step 3 — Review & Launch:**
+- Summary card: icon, name, category badge, description, system prompt excerpt
+- Tool count chip
+- Two CTA buttons: "Save as Idle" (stops immediately) and "Create & Activate Now" (starts immediately via `invoke('start_agent')`)
+- On save: writes to Zustand store, localStorage, calls Tauri `save_agent_configs`, then navigates to `/workspace`
+
+---
+
+## Workflow, UI & UX Summary
+
+### Agent Execution Workflow (under the hood)
+
+1. User submits a natural language task description in the Workspace chat
+2. Tauri `prepare_task` command routes it to the correct agent using a matching algorithm
+3. Frontend displays confirmation: "I've routed this to [Agent Name]. [tools] ready."
+4. The `OrchestratorService` (TypeScript, running in the sidecar or renderer) picks up the pending task from SQLite
+5. Fetches fresh context data from Composio tools
+6. Sends the task + context to Anthropic Claude (cloud) or Ollama (local) with the agent's system prompt
+7. Parses the AI's JSON response into a plan: `{ reasoning, actions: [{tool, params}], expectedOutcome }`
+8. Executes each action:
+   - Browser actions → Playwright via `ComputerUse` class (with approval gate if autonomy is not `high`)
+   - API/SaaS actions → `composio.executeAction(tool, params)`
+9. Writes results and logs to SQLite
+10. Checks escalation rules (deal value thresholds, sentiment scores, error counts, etc.)
+11. If escalation triggers → pauses task, fires Tauri `'escalation'` event → frontend `EscalationPanel` surfaces it for human review
+
+### Escalation Loop
+- `EscalationPanel` shows a list of pending escalations with reason text and "Resolve" / "Dismiss" buttons
+- Resolve/Dismiss handlers currently log to console (stub, not yet wired to SQLite)
+
+### Billing & Subscription Workflow
+- Plans: Local (free), Starter, Professional, Business — all with NGN as default currency
+- ModeSelect's Business Mode modal collects plan selection → writes to localStorage
+- Real payment flow (Paystack / Flutterwave SDKs) is implemented in `src/billing/` but **not yet connected** to the subscription modal UI
+- The billing schema (subscriptions, usage, invoices, agent_budgets, token_usage_log) is fully defined in SQLite
+
+---
+
+## UI & UX Patterns
+
+**Design language:**
+- Deep dark background everywhere (`#0f0f12` / `bg-dark`)
+- Two accent colors: `brand` (purple `#6C3BFF`) for primary actions, `accent` (green `#00E5A0`) for success/status
+- `midGray` for all secondary text and borders
+- Rounded-2xl cards (16px radius) with 1px `border-midGray/60` and subtle `bg-white/[0.03]` glass
+- No external component library — everything is hand-built Tailwind CSS
+
+**Animation philosophy:**
+- Framer Motion `initial={{ opacity: 0, y: 12–18 }} animate={{ opacity: 1, y: 0 }}` on almost every screen mount
+- Scale micro-interactions on cards: `whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }}`
+- AnimatePresence for modal enter/exit
+- Spinning border ring for loading states; scale-in bounce for checkmarks and error icons
+
+**Accessibility:**
+- `role="status"` on the workspace toast notice
+- Disabled states on buttons (`disabled:opacity-40 disabled:cursor-not-allowed`)
+- Semantic `<header>`, `<main>`, `<aside>`, `<footer>` landmarks used in key screens
+- No explicit ARIA labels on interactive icons — gaps exist
+
+**Responsive behavior:**
+- Most layouts use `sm:` and `md:` breakpoints
+- AgentSelect: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`
+- BoltStyleChat sidebar: icon rail (56px) collapses to full panel (224px) on `md:` and above
+- Sticky footers in setup flows use `fixed inset-x-0 bottom-0` with `backdrop-blur`
+
+---
+
+## Connected vs Disconnected Feature Map
+
+| Feature | Status |
+|---|---|
+| Routing + navigation | ✅ Fully wired |
+| Free Mode setup (Ollama install + model pull) | ✅ Wired to Tauri invokes |
+| Business Mode subscription modal | ⚠️ UI complete; Paystack/Flutterwave SDKs exist but payment is not wired |
+| Agent registry (55 agents, schemas, prompts, tools) | ✅ Complete |
+| Agent selection + hydration | ✅ Wired |
+| Integrations animation screen | ⚠️ Visual only — no real OAuth |
+| Agent config forms | ⚠️ Only 3 schemas have custom fields; rest fall back to `research-general` |
+| WizardScreen (3-step agent creation) | ✅ Fully functional |
+| Workspace chat UI + task submission | ✅ UI complete; backend routing via `invoke('prepare_task')` |
+| OrchestratorService (Anthropic + Ollama + Composio + Playwright) | ✅ Fully implemented in TypeScript |
+| Orchestrator sidecar (Node.js process) | ⚠️ Placeholder — `tick()` only logs, doesn't call OrchestratorService |
+| Escalation panel | ⚠️ UI complete; resolve/dismiss are console.log stubs |
+| ComputerUse (Playwright, approval gate, session recording) | ✅ Fully implemented |
+| Voice (local Whisper + Coqui, cloud Deepgram + ElevenLabs) | ✅ Fully implemented |
+| SQLite schema (all 15 tables) | ✅ Defined |
+| Tauri Rust backend (`src-tauri/`) | ⚠️ `invoke()` calls exist throughout but `src-tauri/` folder is absent from the repo — app gracefully falls back to localStorage-only mode |
+| Dashboard escalations from live data | ⚠️ Receives hardcoded empty array |
+| Token usage / budgets | ✅ Schema defined; enforcement in `agent_budgets` table — UI billing panel exists but connection unclear |
+| AgentDetail screen | ⚠️ Loads stub data, not from SQLite |
+
+---
+
+## Key Design Tensions Worth Noting
+
+1. **Two post-onboarding UIs exist**: `Workspace` (`/workspace`, BoltStyleChat) is the intended main UI, but `Dashboard` (agent status grid) is also reachable and is the older primary shell. They serve different mental models — "chat to agents" vs "monitor agents".
+
+2. **ModeSelect is both onboarding entry and a shortcut**: It has a self-contained 5-step setup inside a modal that bypasses the full `/setup/device-check → model-select → agent-select` chain. Both paths set the same `setup_complete` flag and both work.
+
+3. **The sidecar is a placeholder**: The production-quality `OrchestratorService` class (with full Anthropic + Ollama + Composio + Playwright execution) lives in `src/orchestrator/index.ts` but the actual sidecar process (`orchestrator-sidecar.js`) that Tauri spawns is a simplified skeleton. The connection between Tauri and the real orchestrator is the main gap between the current state and a fully functional app.
+
+4. **`localStorage` as primary persistence**: The frontend never touches SQLite directly. The Zustand store is populated from localStorage on mount. SQLite is only accessed by the Node.js orchestrator process. This means the UI and the execution engine have separate views of the world, synchronized only through Tauri IPC.
+
+Let me read the current App.tsx and check what files exist in the setup folder before deleting anything.Good. Now let me read the full current ModeSelect to understand all the business-mode modal code before editing it:I have the full picture. Now I'll execute all 5 tasks. Let me start by deleting the setup sub-screens, rewriting App.tsx, then doing the full ModeSelect rewrite (tasks 1–5 all touch ModeSelect), and finally rewriting the OnboardingForm.Good. Now rewrite App.tsx to remove all deleted routes:Now tackling tasks 2–5 together since they all live in ModeSelect and OnboardingForm. Let me rewrite both files completely.Tasks 3, 4, and 5 all live in ModeSelect.tsx — I'll do the full rewrite now covering all three at once.Now verify the build compiles cleanly:All errors are pre-existing test-type issues (`toBeInTheDocument` missing from the test setup) — nothing in our changed files. None of the errors reference `ModeSelect`, `onboarding-form`, or `App.tsx`. The app source is clean.Zero errors in our files. Let me also confirm the deleted-file imports don't linger anywhere:All matches are inside test files, agent system prompts, and unrelated utility files — not import statements for the deleted screens. The codebase is clean. Now mark the remaining tasks complete:All 5 tasks done. Here's a summary of every change made:
+
+---
+
+**Task 1 — Alternative setup path removed**
+- Deleted: `DeviceCheck`, `ModelSelect`, `AgentSelect`, `Integrations`, `AgentConfig`, `VoiceSetup`, `Launch`
+- `App.tsx` trimmed to just `/`, `/wizard`, `/agent/:id`, `/setup`, `/workspace`
+
+**Task 2 — OnboardingForm**
+- Added `email` field (required, validated with regex)
+- Avatar preview now shows initials while typing username, then the image once uploaded
+- New `requireEmailVerification` prop — when `true`, submitting the profile form fires `onRequestOtp(email)` and reveals the OTP step
+- OTP step: 6 individual digit boxes, auto-advance on input, backspace-to-previous, paste support, 60-second resend cooldown
+- Both `email` and `avatar` are saved in `localStorage.user_profile` via `saveProfile`
+
+**Task 3 — Paid tier subscription links**
+- Each plan card now has two buttons: the primary CTA (`handleSubscribe`) that records the choice in localStorage and opens the profile modal, and a secondary `Pay via Paystack / Flutterwave →` link that opens `SUBSCRIPTION_LINKS[tier][cycle]`
+- Links are clearly marked as placeholders — swap real Paystack/Flutterwave checkout URLs when ready
+- Tauri's `invoke('open_url')` is used with a `window.open` fallback
+
+**Task 4 — Free mode localStorage config written at each step**
+- After model pull: `selected_model = 'llama3.2:3b'`, `deployment_mode = 'local'` written immediately
+- After all voice steps: `voice_mode = 'local'`, `voice_config = { mode, sttModel, ttsModel, language, wakeWord }` written
+- `setup_complete = 'true'` is only written at the very end of `finalize`, after voice setup succeeds
+
+**Task 5 — Voice setup timeline in free mode**
+- Four new steps appended after hardware check: `whisper-check` → `whisper-dl` → `coqui-check` → `coqui-dl`
+- Each check calls the corresponding Tauri invoke (`check_whisper`, `check_coqui`); if the component is already present the download step is skipped
+- System requirements blurb on the Free Mode card updated to mention `~2.8 GB` (adds voice models) and lists local voice as a feature
+
+
+Now I have the full file. Let me also read the workspace navigation to understand the sidebar logo:Good. Now I have everything. Here's what needs to change in `bolt-style-chat.tsx`:
+
+1. **Header** — remove the `<span>` logo block, keep only the "Autonomous workspace" badge
+2. **Empty state** — move the entire hero+input into a single vertically+horizontally centred container (not `justify-center` on main with `pb-28`), use a full `h-screen` flex layout
+3. **Glow** — move the ring closer to centre (lower `top` value) and increase its visual impact
+4. **Size** — reduce fonts, icon, spacing, input height, and button sizes by ~30%Quick TypeScript check on the changed file:No errors in our files (exit 1 is from the pre-existing test-type issues). Here's exactly what changed and why:
+
+---
+
+**1. Header — logo removed**
+The `<div>` containing the `a` square and `agēntīq` text is gone. The header now only renders the "Autonomous workspace" badge, right-aligned. The logo lives exclusively in the sidebar where it belongs.
+
+**2. Empty state — true centre-centre**
+The main element in empty state is now `flex flex-1 flex-col items-center justify-center` with no `pb-28` offset. The hero and the input box are wrapped together in a single `max-w-xl` column, so they move as one unit and sit at the visual centre of whatever viewport height is available. The input is no longer `fixed` to the bottom in empty state — it's inline below the copy.
+
+**3. Glow — zoomed in and stronger**
+- Ring: `top-[-35rem] size-[72rem]` → `top-[-8rem] size-[54rem]` — ring starts much closer to the visible viewport so it wraps behind the hero text
+- Ring border opacity: `border-brand/20` → `border-brand/25`, shadow spread increased to `180px 60px` and opacity to `0.28`
+- Radial gradient: origin moved from `20%` to `38%` (closer to content), spread widened from `34%` to `52%`, opacity `0.16` → `0.22`
+
+**4. Size reduced ~30%**
+| Element | Before | After |
+|---|---|---|
+| Hero headline | `text-3xl / sm:text-5xl` | `text-[1.6rem] / sm:text-[2.1rem]` |
+| Sub-copy | `text-sm / sm:text-base`, `max-w-xl` | `text-[13px]`, `max-w-sm` |
+| Sparkle icon box | `size-12`, `size-6` icon | `size-9`, `size-4` icon |
+| Textarea min-height | `78px` | `58px` |
+| Textarea font | `text-[15px]` | `text-[13px]` |
+| Send button | `px-3.5 py-2 text-sm` | `px-3 py-1.5 text-[12px]` |
+| Toolbar icon buttons | `size-8` | `size-7` |
+| Model picker font | `text-xs` | `text-[11px]` |
+| Input padding | `px-5 pb-3 pt-4` | `px-4 pb-2.5 pt-3` |
