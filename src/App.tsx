@@ -4,13 +4,14 @@ import WizardScreen from './screens/WizardScreen';
 import AgentDetail from './screens/AgentDetail';
 import ModeSelect from './screens/setup/ModeSelect';
 import Workspace from './screens/Workspace';
+import Landing from './screens/Landing';
 
 function RootRoute() {
   const isSetupComplete = localStorage.getItem('setup_complete') === 'true';
   const hasStoredAgents = Boolean(localStorage.getItem('agentiq_agents') || localStorage.getItem('selected_agents'));
 
   if (!isSetupComplete && !hasStoredAgents) {
-    return <Navigate to="/setup" replace />;
+    return <Landing />;
   }
   return <Navigate to="/workspace" replace />;
 }
@@ -22,6 +23,7 @@ function App() {
       <Route path="/wizard" element={<WizardScreen />} />
       <Route path="/agent/:id" element={<AgentDetail />} />
       <Route path="/setup" element={<ModeSelect />} />
+      <Route path="/welcome" element={<Landing />} />
       <Route path="/workspace" element={<Workspace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

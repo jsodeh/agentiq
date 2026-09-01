@@ -85,17 +85,20 @@ export function BoltStyleChat({
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#0f0f12] text-white">
       <WorkspaceSidebar open={sidebarOpen} onToggle={toggleSidebar} onAction={handleNavigation} username={username} />
 
-      {/* ── Background glow (zoomed in, centred) ── */}
+      {/* ── Background arc — an oversized circle placed below the viewport ── */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {/* Large ring — pulled down so it sits behind the hero */}
-        <div className="absolute left-1/2 top-[-8rem] size-[54rem] -translate-x-1/2 rounded-full border-[32px] border-brand/25 shadow-[0_0_180px_60px_rgba(108,59,255,0.28)]" />
-        {/* Soft radial fill — covers more of the viewport */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(108,59,255,0.22),transparent_52%)]" />
+        {/* The circle is deliberately several viewport widths wide, so only its top arc is visible. */}
+        <div className="absolute left-1/2 top-[51%] size-[220vmax] -translate-x-1/2 rounded-full border-[7px] border-[#0876ff] shadow-[0_0_12px_4px_rgba(8,118,255,0.85),0_0_48px_18px_rgba(8,118,255,0.55)]">
+          <div className="absolute inset-[9px] rounded-full border-[7px] border-[#75b4ff]" />
+          <div className="absolute inset-[20px] rounded-full border-[14px] border-[#f6f8ff] shadow-[0_0_10px_rgba(255,255,255,0.7)]" />
+        </div>
+        {/* A subtle blue bloom makes the upper workspace feel connected to the arc. */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_75%_42%_at_50%_48%,rgba(10,96,180,0.28),transparent_74%)]" />
       </div>
 
       {/* ── Header — badge only, no logo ── */}
       <header
-        className={`relative z-10 flex items-center justify-end border-b border-white/[0.07] px-5 py-3 transition-[margin] sm:px-8 ${sidebarOffset}`}
+        className={`${hasMessages ? 'relative' : 'absolute inset-x-0 top-0'} z-10 flex items-center justify-end border-b border-white/[0.07] px-5 py-3 transition-[margin] sm:px-8 ${sidebarOffset}`}
       >
         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] text-[#a0a0a8]">
           Autonomous workspace
@@ -141,7 +144,7 @@ export function BoltStyleChat({
       ) : (
         /* ── Empty / hero state — true centre of viewport ── */
         <main
-          className={`relative z-10 flex flex-1 flex-col items-center justify-center px-5 transition-[margin] ${sidebarOffset}`}
+          className="absolute inset-0 z-0 flex items-center justify-center px-5"
         >
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -319,7 +322,7 @@ export function BoltStyleChat({
 
       {/* Notice toast (empty state) */}
       {!hasMessages && (
-        <div className={`fixed bottom-5 left-1/2 z-20 -translate-x-1/2 transition-[left] md:left-[calc(50%+3.5rem)] ${sidebarOpen ? 'md:left-[calc(50%+7rem)]' : ''}`}>
+        <div className="fixed bottom-5 left-1/2 z-20 -translate-x-1/2">
           <AnimatePresence>
             {notice && (
               <motion.div
