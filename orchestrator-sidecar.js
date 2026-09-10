@@ -5,13 +5,21 @@
  * 
  * This Node.js script runs as a separate process spawned by Tauri.
  * It manages the OrchestratorService and handles agent execution.
+ * 
+ * Uses dynamic import to load the compiled TypeScript OrchestratorService
  */
 
-const path = require('path');
-const fs = require('fs');
+import { pathToFileURL } from 'url';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import os from 'os';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Configuration
-const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'agentiq.db');
+const HOME_DIR = os.homedir();
+const DB_PATH = process.env.DB_PATH || join(HOME_DIR, '.agentiq', 'agentiq.db');
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const COMPOSIO_API_KEY = process.env.COMPOSIO_API_KEY || '';
 const MODE = process.env.MODE || 'local';
@@ -21,74 +29,129 @@ console.log('[Orchestrator Sidecar] Starting...');
 console.log('[Orchestrator Sidecar] DB Path:', DB_PATH);
 console.log('[Orchestrator Sidecar] Mode:', MODE);
 
-// Import orchestrator (would need to be compiled/bundled)
-// For now, this is a placeholder that demonstrates the structure
+let orchestrator = null;
 
-class SimplifiedOrchestrator {
-  constructor(config) {
-    this.config = config;
-    this.running = false;
-    console.log('[Orchestrator] Initialized with config:', config);
-  }
+async function main() {
+  try {
+    // Dynamic import of the compiled OrchestratorService
+    const orchestratorPath = join(__dirname, 'dist', 'orchestrator', 'index.js');
+    const { OrchestratorService } = await import(pathToFileURL(orchestratorPath).href);
 
-  async start() {
-    this.running = true;
-    console.log('[Orchestrator] Started');
-    
-    // Main loop
-    this.interval = setInterval(async () => {
-      if (this.running) {
-        await this.tick();
+    // Initialize orchestrator with configuration
+    orchestrator = new OrchestratorService({
+      dbPath: DB_PATH,
+      anthropicApiKey: ANTHROPIC_API_KEY,
+      composioApiKey: COMPOSIO_API_KEY,
+      mode: MODE,
+      ollamaEndpoint: OLLAMA_ENDPOINT,
+    });
+
+    // Start the orchestrator
+    await orchestrator.start();
+    console.log('[Orchestrator Sidecar] Orchestrator service started successfully');
+
+    // Set up stdin listener for commands from parent process
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', async (data) => {
+      try {
+        const command = JSON.parse(data.toString().trim());
+        await handleCommand(command);
+      } catch (error) {
+        console.error('[Orchestrator Sidecar] Failed to parse command:', error);
       }
-    }, 5000);
-  }
+    });
 
-  async tick() {
-    console.log('[Orchestrator] Tick - checking for tasks...');
-    // In production, this would:
-    // 1. Query database for pending tasks
-    // 2. Execute tasks via OrchestratorService
-    // 3. Update database with results
-  }
-
-  async stop() {
-    this.running = false;
-    if (this.interval) {
-      clearInterval(this.interval);
-    }
-    console.log('[Orchestrator] Stopped');
+  } catch (error) {
+    console.error('[Orchestrator] Failed to start:', error);
+    console.error('[Orchestrator] Stack:', error.stack);
+    process.exit(1);
   }
 }
 
-// Initialize orchestrator
-const orchestrator = new SimplifiedOrchestrator({
-  dbPath: DB_PATH,
-  anthropicApiKey: ANTHROPIC_API_KEY,
-  composioApiKey: COMPOSIO_API_KEY,
-  mode: MODE,
-  ollamaEndpoint: OLLAMA_ENDPOINT,
-});
+/**
+ * Handle commands from parent process
+ */
+async function handleCommand(command) {
+  console.log('[Orchestrator Sidecar] Received command:', command.type);
 
-// Start orchestrator
-orchestrator.start().catch(error => {
-  console.error('[Orchestrator] Failed to start:', error);
+  try {
+    switch (command.type) {
+      case 'start_agent':
+        if (orchestrator) {
+          await orchestrator.runAgent(command.agentId);
+          sendResponse({ success: true, message: `Agent ${command.agentId} started` });
+        }
+        break;
+
+      case 'pause_agent':
+        if (orchestrator) {
+          await orchestrator.pauseAgent(command.agentId);
+          sendResponse({ success: true, message: `Agent ${command.agentId} paused` });
+        }
+        break;
+
+      case 'get_status':
+        if (orchestrator) {
+          const status = orchestrator.getStatus();
+          sendResponse({ success: true, data: status });
+        }
+        break;
+
+      case 'get_logs':
+        if (orchestrator) {
+          const logs = orchestrator.getLogs(command.filters);
+          sendResponse({ success: true, data: logs });
+        }
+        break;
+
+      case 'get_escalations':
+        if (orchestrator) {
+          const escalations = orchestrator.getEscalations(command.status);
+          sendResponse({ success: true, data: escalations });
+        }
+        break;
+
+      default:
+        sendResponse({ success: false, error: `Unknown command: ${command.type}` });
+    }
+  } catch (error) {
+    console.error('[Orchestrator Sidecar] Command error:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Send response back to parent process
+ */
+function sendResponse(response) {
+  console.log(JSON.stringify(response));
+}
+
+/**
+ * Handle shutdown signals
+ */
+async function shutdown(signal) {
+  console.log(`[Orchestrator] Received ${signal}, shutting down...`);
+  
+  if (orchestrator) {
+    try {
+      await orchestrator.stop();
+      orchestrator.close();
+    } catch (error) {
+      console.error('[Orchestrator] Error during shutdown:', error);
+    }
+  }
+  
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Start the sidecar
+main().catch(error => {
+  console.error('[Orchestrator Sidecar] Fatal error:', error);
   process.exit(1);
 });
-
-// Handle shutdown signals
-process.on('SIGTERM', async () => {
-  console.log('[Orchestrator] Received SIGTERM, shutting down...');
-  await orchestrator.stop();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  console.log('[Orchestrator] Received SIGINT, shutting down...');
-  await orchestrator.stop();
-  process.exit(0);
-});
-
-// Keep process alive
-process.stdin.resume();
 
 console.log('[Orchestrator Sidecar] Running. PID:', process.pid);

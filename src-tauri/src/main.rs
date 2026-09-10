@@ -92,6 +92,191 @@ fn prepare_task(description: String) -> Result<serde_json::Value, String> {
     }))
 }
 
+#[tauri::command]
+fn create_task(
+    agent_id: i32,
+    description: String
+) -> Result<i64, String> {
+    let db_path = get_db_path();
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    
+    conn.execute(
+        "INSERT INTO tasks (agent_id, description, status) VALUES (?1, ?2, ?3)",
+        rusqlite::params![agent_id, description, "pending"],
+    ).map_err(|e| format!("Failed to insert task: {}", e))?;
+    
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+fn create_conversation(
+    agent_id: i32,
+    title: String
+) -> Result<i64, String> {
+    let db_path = get_db_path();
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    
+    conn.execute(
+        "INSERT INTO conversations (agent_id, title) VALUES (?1, ?2)",
+        rusqlite::params![agent_id, title],
+    ).map_err(|e| format!("Failed to insert conversation: {}", e))?;
+    
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+fn add_message(
+    conversation_id: i64,
+    role: String,
+    content: String
+) -> Result<i64, String> {
+    let db_path = get_db_path();
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    
+    conn.execute(
+        "INSERT INTO messages (conversation_id, role, content) VALUES (?1, ?2, ?3)",
+        rusqlite::params![conversation_id, role, content],
+    ).map_err(|e| format!("Failed to insert message: {}", e))?;
+    
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+fn get_conversation_messages(conversation_id: i64) -> Result<String, String> {
+    let db_path = get_db_path();
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    
+    let mut stmt = conn.prepare(
+        "SELECT id, role, content, created_at FROM messages WHERE conversation_id = ?1 ORDER BY created_at ASC"
+    ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
+    
+    let messages: Vec<serde_json::Value> = stmt.query_map([conversation_id], |row| {
+        Ok(serde_json::json!({
+            "id": row.get::<_, i64>(0)?,
+            "role": row.get::<_, String>(1)?,
+            "content": row.get::<_, String>(2)?,
+            "created_at": row.get::<_, String>(3)?
+        }))
+    })
+    .map_err(|e| format!("Query failed: {}", e))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("Failed to collect results: {}", e))?;
+    
+    serde_json::to_string(&messages).map_err(|e| format!("Failed to serialize: {}", e))
+}
+
+#[tauri::command]
+fn update_task_status(
+    task_id: i64,
+    status: String,
+    result: Option<String>
+) -> Result<(), String> {
+    let db_path = get_db_path();
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    
+    if let Some(result_text) = result {
+        conn.execute(
+            "UPDATE tasks SET status = ?1, result = ?2, completed_at = CURRENT_TIMESTAMP WHERE id = ?3",
+            rusqlite::params![status, result_text, task_id],
+        ).map_err(|e| format!("Failed to update task: {}", e))?;
+    } else {
+        conn.execute(
+            "UPDATE tasks SET status = ?1 WHERE id = ?2",
+            rusqlite::params![status, task_id],
+        ).map_err(|e| format!("Failed to update task: {}", e))?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn get_or_create_agent(agent_type: String, user_id: i32) -> Result<i64, String> {
+    let db_path = get_db_path();
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    
+    // Try to find existing agent
+    let mut stmt = conn.prepare(
+        "SELECT id FROM agents WHERE type = ?1 AND user_id = ?2 LIMIT 1"
+    ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
+    
+    let existing: Option<i64> = stmt.query_row([&agent_type, &user_id.to_string()], |row| row.get(0)).ok();
+    
+    if let Some(agent_id) = existing {
+        return Ok(agent_id);
+    }
+    
+    // Create new agent with default config
+    let default_config = serde_json::json!({
+        "systemPrompt": "You are a helpful AI assistant.",
+        "tools": [],
+        "autonomyLevel": "medium"
+    });
+    
+    conn.execute(
+        "INSERT INTO agents (user_id, name, type, status, config) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            user_id,
+            &agent_type,
+            &agent_type,
+            "active",
+            default_config.to_string()
+        ],
+    ).map_err(|e| format!("Failed to insert agent: {}", e))?;
+    
+    Ok(conn.last_insert_rowid())
+}
+
+fn get_db_path() -> PathBuf {
+    let home_dir = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".to_string());
+    
+    PathBuf::from(home_dir)
+        .join(".agentiq")
+        .join("agentiq.db")
+}
+
+#[tauri::command]
+fn init_database() -> Result<(), String> {
+    use std::fs;
+    
+    let db_path = get_db_path();
+    
+    // Create directory if it doesn't exist
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    
+    // Read and execute schema
+    let schema = include_str!("../../src/db/schema.sql");
+    conn.execute_batch(schema)
+        .map_err(|e| format!("Failed to execute schema: {}", e))?;
+    
+    // Create default user if none exists
+    let user_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+        .unwrap_or(0);
+    
+    if user_count == 0 {
+        conn.execute(
+            "INSERT INTO users (name, email) VALUES (?1, ?2)",
+            rusqlite::params!["Default User", "user@agentiq.local"],
+        ).map_err(|e| format!("Failed to create default user: {}", e))?;
+    }
+    
+    Ok(())
+}
+
 fn ollama_command() -> Command {
     // The Windows installer updates PATH for future processes only. Prefer its
     // known per-user location so setup can continue in this same app session.
@@ -717,13 +902,44 @@ async fn start_orchestrator_sidecar(
 
     // Spawn Node.js orchestrator as sidecar
     // In production, this would be a bundled Node.js script
-    let child = Command::new("node")
+    let mut child = Command::new("node")
         .arg("orchestrator-sidecar.js")
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn orchestrator: {}", e))?;
+
+    // Clone app handle for the stdout reader thread
+    let app_clone = app.clone();
+    
+    // Capture stdout and forward orchestrator events to frontend
+    if let Some(stdout) = child.stdout.take() {
+        use std::io::{BufRead, BufReader};
+        
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    // Check if line contains a Tauri event
+                    if line.starts_with("TAURI_EVENT:") {
+                        if let Some(json_str) = line.strip_prefix("TAURI_EVENT:") {
+                            if let Ok(event) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                if let Some(event_type) = event.get("eventType").and_then(|v| v.as_str()) {
+                                    if let Some(data) = event.get("data") {
+                                        let _ = app_clone.emit(event_type, data.clone());
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Regular log output
+                        println!("[Orchestrator] {}", line);
+                    }
+                }
+            }
+        });
+    }
 
     orch_state.process = Some(child);
     orch_state.running = true;
@@ -818,6 +1034,13 @@ fn main() {
             stop_agent,
             stop_all_agents,
             prepare_task,
+            init_database,
+            create_task,
+            create_conversation,
+            add_message,
+            get_conversation_messages,
+            update_task_status,
+            get_or_create_agent,
             check_ollama,
             download_ollama,
             get_ram_gb,

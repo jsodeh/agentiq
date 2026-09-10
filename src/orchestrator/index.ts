@@ -197,6 +197,13 @@ export class OrchestratorService {
       // Update task status
       this.db.prepare('UPDATE tasks SET status = ? WHERE id = ?').run('in_progress', task.id);
       this.log(agentId, 'info', `Starting task ${task.id}: ${task.description}`);
+      
+      // Emit task start event
+      await this.emitEvent('task_started', {
+        taskId: task.id,
+        agentId,
+        description: task.description,
+      });
 
       // 2. Call Composio to fetch fresh data
       let contextData: any = {};
@@ -271,12 +278,29 @@ export class OrchestratorService {
       }
 
       this.log(agentId, 'info', `Plan: ${plan.reasoning}`);
+      
+      // Emit thinking event
+      await this.emitEvent('agent_thinking', {
+        taskId: task.id,
+        agentId,
+        reasoning: plan.reasoning,
+        expectedOutcome: plan.expectedOutcome,
+      });
 
       // 6. Execute each action in the plan
       const actionResults: any[] = [];
       for (const action of plan.actions) {
         try {
           this.log(agentId, 'info', `Executing action: ${action.tool}`);
+          
+          // Emit action start event
+          await this.emitEvent('action_started', {
+            taskId: task.id,
+            agentId,
+            tool: action.tool,
+            params: action.params,
+            description: action.description,
+          });
           
           const isBrowserAction = [
             'navigate', 'browser_navigate', 'click', 'browser_click',
@@ -317,6 +341,15 @@ export class OrchestratorService {
               await computerUse.close();
               actionResults.push({ action: action.tool, result, success: true });
               this.log(agentId, 'info', `Browser action ${action.tool} completed successfully`);
+              
+              // Emit action completed event
+              await this.emitEvent('action_completed', {
+                taskId: task.id,
+                agentId,
+                tool: action.tool,
+                result,
+                success: true,
+              });
             } catch (browserError) {
               this.log(agentId, 'warning', `Browser action execution fallback: ${browserError}`);
               actionResults.push({ action: action.tool, result: `Browser action simulated: ${action.tool}`, success: true });
@@ -325,13 +358,40 @@ export class OrchestratorService {
             const result = await this.composio.executeAction(action.tool, action.params);
             actionResults.push({ action: action.tool, result, success: true });
             this.log(agentId, 'info', `Action ${action.tool} completed`);
+            
+            // Emit action completed event
+            await this.emitEvent('action_completed', {
+              taskId: task.id,
+              agentId,
+              tool: action.tool,
+              result,
+              success: true,
+            });
           } else {
-            actionResults.push({ action: action.tool, result: `Action ${action.tool} executed successfully`, success: true });
+            const result = `Action ${action.tool} executed successfully`;
+            actionResults.push({ action: action.tool, result, success: true });
             this.log(agentId, 'info', `Action ${action.tool} executed`);
+            
+            // Emit action completed event
+            await this.emitEvent('action_completed', {
+              taskId: task.id,
+              agentId,
+              tool: action.tool,
+              result,
+              success: true,
+            });
           }
         } catch (error) {
           this.log(agentId, 'error', `Action ${action.tool} failed: ${error}`);
           actionResults.push({ action: action.tool, error: String(error), success: false });
+          
+          // Emit action failed event
+          await this.emitEvent('action_failed', {
+            taskId: task.id,
+            agentId,
+            tool: action.tool,
+            error: String(error),
+          });
         }
       }
 
@@ -346,6 +406,13 @@ export class OrchestratorService {
         .run('completed', JSON.stringify(finalResult), new Date().toISOString(), task.id);
 
       this.log(agentId, 'info', `Task ${task.id} completed successfully`);
+      
+      // Emit task completed event
+      await this.emitEvent('task_completed', {
+        taskId: task.id,
+        agentId,
+        result: finalResult,
+      });
 
       // 8. Check escalation rules
       await this.checkEscalationRules(agentId, task.id, {
@@ -612,6 +679,34 @@ export class OrchestratorService {
   private log(agentId: number, level: 'info' | 'warning' | 'error', message: string): void {
     this.db.prepare('INSERT INTO logs (agent_id, level, message) VALUES (?, ?, ?)')
       .run(agentId, level, message);
+  }
+
+  /**
+   * Emit event to frontend (via stdout for sidecar communication)
+   */
+  private async emitEvent(eventType: string, data: any): Promise<void> {
+    try {
+      // Emit to stdout for sidecar to forward to Tauri
+      const event = {
+        type: 'orchestrator_event',
+        eventType,
+        data,
+        timestamp: new Date().toISOString(),
+      };
+      
+      // Write to stdout (sidecar will capture and forward to Tauri)
+      if (process.stdout && !process.stdout.destroyed) {
+        process.stdout.write(JSON.stringify(event) + '\n');
+      }
+      
+      // Also try direct Tauri emit if available (for when running in renderer)
+      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        const { emit } = await import('@tauri-apps/api/event');
+        await emit(eventType, data);
+      }
+    } catch (error) {
+      console.error(`[Orchestrator] Failed to emit event ${eventType}:`, error);
+    }
   }
 
   /**
