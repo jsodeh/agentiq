@@ -5,6 +5,34 @@ import { BoltStyleChat, type WorkspaceMessage } from '../components/ui/bolt-styl
 import { getOrchestratorClient } from '../lib/orchestrator-client';
 
 type TaskPreparation = { agent_id: string; agent_name: string; activated_tools: string[]; task_id: string; };
+type ChatResponse = { message_id: number; content: string; };
+
+/** Agile intent classifier — returns true if the prompt is simple conversational (no tools needed) */
+function isDirectChat(prompt: string): boolean {
+  const p = prompt.trim().toLowerCase();
+  // Very short prompts (≤5 words) without task keywords are treated as conversational
+  const wordCount = p.split(/\s+/).length;
+  const taskKeywords = [
+    'search', 'find', 'look up', 'browse', 'scrape', 'fetch', 'get me',
+    'generate', 'create', 'write', 'build', 'make', 'code', 'debug', 'fix',
+    'invoice', 'email', 'schedule', 'book', 'calendar', 'lead', 'prospect',
+    'post', 'publish', 'send', 'automate', 'run', 'execute', 'deploy',
+    'analyze', 'analyse', 'research', 'market', 'competitor', 'inventory',
+    'download', 'upload', 'file', 'read file', 'write file',
+  ];
+  const hasTaskKeyword = taskKeywords.some(kw => p.includes(kw));
+  // Simple greetings & short questions are always direct
+  const simplePatterns = [
+    /^(hi|hello|hey|sup|yo|howdy)[!?.]*$/,
+    /^(good\s?(morning|afternoon|evening|night))[!?.]*$/,
+    /^(how are you|what('s| is) up|what can you do)[?!.]*$/,
+    /^thank(s| you)[!.]*$/,
+    /^(yes|no|ok|okay|sure|got it|sounds good|great|perfect|nice)[!.]*$/,
+  ];
+  const isSimplePattern = simplePatterns.some(re => re.test(p));
+  return isSimplePattern || (wordCount <= 8 && !hasTaskKeyword);
+}
+
 
 interface AgentEvent {
   taskId: number;
@@ -196,9 +224,60 @@ function WorkspaceContent() {
   }, []);
 
   const submitTask = async (description: string) => {
-    setMessages((current) => [...current, { id: `user-${Date.now()}`, role: 'user', content: description }]);
+    const msgId = `user-${Date.now()}`;
+    setMessages((current) => [...current, { id: msgId, role: 'user', content: description }]);
     setIsWorking(true);
 
+    // ─── FAST DIRECT CHAT PATH ──────────────────────────────────────────────────
+    if (isDirectChat(description)) {
+      try {
+        const userId = profile.id || 1;
+
+        // Ensure we have a conversation & agent record
+        let conversationId = currentConversationId;
+        if (!conversationId) {
+          const agentId = await invoke<number>('get_or_create_agent', {
+            agentType: 'assistant',
+            userId,
+          });
+          conversationId = await invoke<number>('create_conversation', {
+            agentId,
+            title: description.substring(0, 50),
+          });
+          setCurrentConversationId(conversationId);
+        }
+
+        const response = await invoke<ChatResponse>('send_chat_message', {
+          conversationId,
+          message: description,
+        });
+
+        setMessages((current) => [
+          ...current,
+          {
+            id: `reply-${response.message_id}`,
+            role: 'assistant',
+            content: response.content,
+          },
+        ]);
+      } catch (error) {
+        console.error('[Workspace] Direct chat error:', error);
+        setMessages((current) => [
+          ...current,
+          {
+            id: `error-${Date.now()}`,
+            role: 'assistant',
+            content: "I'm sorry, I couldn't respond right now. Please try again.",
+            meta: String(error),
+          },
+        ]);
+      } finally {
+        setIsWorking(false);
+      }
+      return;
+    }
+
+    // ─── FULL AGENTIC WORKFLOW PATH ──────────────────────────────────────────────
     try {
       // 1. Prepare task (route to appropriate agent)
       const prep = await invoke<TaskPreparation>('prepare_task', { description });
@@ -238,25 +317,23 @@ function WorkspaceContent() {
       setCurrentTaskId(taskId);
       console.log('[Workspace] Task created:', taskId);
 
-      // 6. Show preparation message
+      // 6. Show agent routing banner
       setMessages((current) => [
         ...current,
         {
           id: prep.task_id,
           role: 'assistant',
-          content: `I've routed this to ${prep.agent_name}. Its workspace is prepared and it can begin this task now.`,
-          meta: `${prep.activated_tools.join(' · ')} ready`
+          content: `Routing to ${prep.agent_name} · Working on it…`,
+          meta: prep.activated_tools.join(' · ')
         }
       ]);
 
-      // 7. Start the agent (orchestrator will pick up the task)
+      // 7. Start the agent
       try {
         const orchestratorClient = getOrchestratorClient();
         await orchestratorClient.runAgent(agentId);
-        console.log('[Workspace] Agent started for task:', taskId);
       } catch (error) {
         console.error('[Workspace] Failed to start agent:', error);
-        // Agent might already be running, which is fine
       }
 
     } catch (error) {

@@ -45,7 +45,7 @@ export class OrchestratorClient {
    */
   async start(): Promise<void> {
     try {
-      await invoke('start_orchestrator_sidecar');
+      await invoke('start_orchestrator');
       console.log('[Orchestrator] Started successfully');
     } catch (error) {
       console.error('[Orchestrator] Failed to start:', error);
@@ -58,7 +58,7 @@ export class OrchestratorClient {
    */
   async stop(): Promise<void> {
     try {
-      await invoke('stop_orchestrator_sidecar');
+      await invoke('stop_orchestrator');
       console.log('[Orchestrator] Stopped successfully');
     } catch (error) {
       console.error('[Orchestrator] Failed to stop:', error);

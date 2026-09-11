@@ -2,6 +2,7 @@ import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { Brain, ChevronDown, Lightbulb, Paperclip, Plus, SendHorizontal, Sparkles, Zap } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { WorkspaceBottomMenu, WorkspaceSidebar } from './workspace-navigation';
+import { SettingsModal } from './SettingsModal';
 
 export type WorkspaceMessage = {
   id: string;
@@ -32,6 +33,7 @@ export function BoltStyleChat({
   const [modelOpen, setModelOpen]       = useState(false);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [bottomMenuOpen, setBottomMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice]             = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const end      = useRef<HTMLDivElement>(null);
@@ -68,7 +70,9 @@ export function BoltStyleChat({
   const toggleBottom  = () => { setBottomMenuOpen(o => !o); setSidebarOpen(false); };
 
   const handleNavigation = (label: string) => {
-    if (label === 'New task') {
+    if (label === 'Settings' || label === 'Profile') {
+      setSettingsOpen(true);
+    } else if (label === 'New task') {
       setInput(''); textarea.current?.focus(); setNotice('Ready for a new task.');
     } else if (label === 'Workspace') {
       setNotice('You are already in your workspace.');
@@ -391,6 +395,7 @@ export function BoltStyleChat({
       )}
 
       <WorkspaceBottomMenu open={bottomMenuOpen} onToggle={toggleBottom} onAction={handleNavigation} />
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
