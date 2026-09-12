@@ -21,11 +21,13 @@ export function BoltStyleChat({
   username,
   messages,
   isWorking,
+  workingText = 'Thinking…',
   onSend,
 }: {
   username?: string;
   messages: WorkspaceMessage[];
   isWorking: boolean;
+  workingText?: string;
   onSend: (message: string) => void;
 }) {
   const [input, setInput]               = useState('');
@@ -194,7 +196,7 @@ export function BoltStyleChat({
               {isWorking && (
                 <div className="flex items-center gap-2 border-b border-white/[0.05] px-3 py-3 text-sm text-[#a0a0a8]">
                   <span className="size-2 animate-pulse rounded-full bg-accent" />
-                  Preparing the right agent and tools…
+                  {workingText}
                 </div>
               )}
               <div ref={end} />

@@ -70,6 +70,7 @@ function WorkspaceContent() {
   const profile = useMemo(() => { try { return JSON.parse(localStorage.getItem('user_profile') || '{}') as { username?: string; id?: number }; } catch { return {}; } }, []);
   const [messages, setMessages] = useState<WorkspaceMessage[]>([]);
   const [isWorking, setIsWorking] = useState(false);
+  const [workingText, setWorkingText] = useState('Thinking…');
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
   const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
 
@@ -226,10 +227,12 @@ function WorkspaceContent() {
   const submitTask = async (description: string) => {
     const msgId = `user-${Date.now()}`;
     setMessages((current) => [...current, { id: msgId, role: 'user', content: description }]);
+    const direct = isDirectChat(description);
+    setWorkingText(direct ? 'Thinking…' : 'Preparing agent & tools…');
     setIsWorking(true);
 
     // ─── FAST DIRECT CHAT PATH ──────────────────────────────────────────────────
-    if (isDirectChat(description)) {
+    if (direct) {
       try {
         const userId = profile.id || 1;
 
@@ -351,7 +354,7 @@ function WorkspaceContent() {
     }
   };
 
-  return <BoltStyleChat username={profile.username} messages={messages} isWorking={isWorking} onSend={submitTask} />;
+  return <BoltStyleChat username={profile.username} messages={messages} isWorking={isWorking} workingText={workingText} onSend={submitTask} />;
 }
 
 export default function Workspace() {

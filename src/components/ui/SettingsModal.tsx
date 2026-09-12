@@ -112,7 +112,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } else if (provider === 'openai') {
       setCloudModel('gpt-4o');
     } else if (provider === 'gemini') {
-      setCloudModel('gemini-2.5-flash');
+      setCloudModel('gemini-3.6-flash');
     }
   };
 
@@ -337,10 +337,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         )}
                         {cloudProvider === 'gemini' && (
                           <>
-                            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast &amp; Multimodal)</option>
-                            <option value="gemini-2.5-pro">Gemini 2.5 Pro (Advanced Reasoning)</option>
-                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Recommended)</option>
+                            <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                           </>
                         )}
                       </select>

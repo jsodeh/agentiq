@@ -25,8 +25,8 @@ impl LlmClient for GeminiClient {
     async fn generate(&self, request: &LlmRequest) -> Result<LlmResponse, AppError> {
         let start = Instant::now();
 
-        let model = if request.model.is_empty() {
-            "gemini-1.5-flash".to_string()
+        let model = if request.model.is_empty() || request.model == "gemini-1.5-flash" || request.model == "gemini-2.5-flash" {
+            "gemini-3.6-flash".to_string()
         } else {
             request.model.clone()
         };
@@ -66,15 +66,30 @@ impl LlmClient for GeminiClient {
             });
         }
 
-        let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            model, self.api_key
-        );
+        // Only ya29. tokens are OAuth tokens; AQ. and AIza. are AI Studio API Keys
+        let is_oauth = self.api_key.starts_with("ya29.");
 
-        let res = self
+        let url = if is_oauth {
+            format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", model)
+        } else {
+            format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+                model, self.api_key
+            )
+        };
+
+        let mut req_builder = self
             .client
             .post(&url)
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+
+        if is_oauth {
+            req_builder = req_builder.header("authorization", format!("Bearer {}", self.api_key));
+        } else {
+            req_builder = req_builder.header("x-goog-api-key", &self.api_key);
+        }
+
+        let res = req_builder
             .json(&body)
             .send()
             .await
@@ -129,3 +144,34 @@ impl LlmClient for GeminiClient {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm::ChatMessage;
+
+    #[tokio::test]
+    async fn test_gemini_client_aq_key() {
+        let key = match std::env::var("GEMINI_API_KEY") {
+            Ok(k) if !k.is_empty() => k,
+            _ => return,
+        };
+        let client = GeminiClient::new(key);
+        let req = LlmRequest {
+            model: "gemini-3.6-flash".to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: "Say 'hello'".to_string(),
+            }],
+            system_prompt: None,
+            temperature: Some(0.1),
+            max_tokens: Some(10),
+            tools: None,
+        };
+        let res = client.generate(&req).await;
+        assert!(res.is_ok(), "Gemini generate failed: {:?}", res.err());
+        let response = res.unwrap();
+        assert!(!response.content.is_empty());
+    }
+}
+
