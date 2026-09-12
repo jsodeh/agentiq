@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/vitest';
 import { BrowserRouter } from 'react-router-dom';
 import Database from 'better-sqlite3';
 import { invoke } from '@tauri-apps/api/core';
