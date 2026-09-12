@@ -87,12 +87,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           const cfg = await invoke<AppConfig>('get_llm_config');
           if (cfg) {
             setMode(cfg.mode || 'cloud');
-            setCloudProvider(cfg.models.cloud_provider || 'anthropic');
-            setCloudModel(cfg.models.cloud_model || 'claude-3-5-sonnet-20241022');
+            
+            const anthKey = cfg.models.anthropic_api_key || '';
+            const gKey = cfg.models.gemini_api_key || '';
+            const oKey = cfg.models.openai_api_key || '';
+            
+            let provider = cfg.models.cloud_provider || 'anthropic';
+            // Auto-select Gemini if Gemini key is present but Anthropic key is empty
+            if (provider === 'anthropic' && !anthKey && gKey) {
+              provider = 'gemini';
+            }
+
+            setCloudProvider(provider);
+            
+            let model = cfg.models.cloud_model || '';
+            if (!model || model === 'gemini-1.5-flash' || model === 'gemini-2.5-flash') {
+              model = provider === 'gemini' ? 'gemini-3.6-flash' : 'claude-3-5-sonnet-20241022';
+            }
+            setCloudModel(model);
+
             setLocalModel(cfg.models.local_base_model || 'llama3.2:3b');
-            setAnthropicKey(cfg.models.anthropic_api_key || '');
-            setOpenaiKey(cfg.models.openai_api_key || '');
-            setGeminiKey(cfg.models.gemini_api_key || '');
+            setAnthropicKey(anthKey);
+            setOpenaiKey(oKey);
+            setGeminiKey(gKey);
           }
         }
       } catch (err) {
@@ -346,12 +363,58 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </select>
                     </div>
 
-                    {/* Anthropic Key */}
-                    {cloudProvider === 'anthropic' && (
-                      <div>
-                        <label className="block text-xs font-semibold text-midGray mb-1.5 flex items-center justify-between">
-                          <span>Anthropic API Key</span>
-                          <span className="text-[10px] text-accent">Stored securely in config</span>
+                    {/* Provider API Keys Section */}
+                    <div className="pt-3 border-t border-white/10 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <Key className="size-3.5 text-brand" /> Cloud Provider API Keys
+                        </h5>
+                        <span className="text-[10px] text-midGray">Keys are persisted securely in config.toml</span>
+                      </div>
+
+                      {/* Gemini Key */}
+                      <div className={`p-2.5 rounded-xl border transition-all ${cloudProvider === 'gemini' ? 'border-brand/50 bg-brand/5' : 'border-white/10 bg-black/30'}`}>
+                        <label className="block text-xs font-semibold text-midGray mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            Google Gemini Key
+                            {cloudProvider === 'gemini' && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-[9px] font-bold text-brand">Active</span>}
+                          </span>
+                          {geminiKey ? (
+                            <span className="text-[10px] text-emerald-400 font-medium">✓ Key Configured</span>
+                          ) : (
+                            <span className="text-[10px] text-midGray">Not Set</span>
+                          )}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showGeminiKey ? 'text' : 'password'}
+                            value={geminiKey}
+                            onChange={(e) => setGeminiKey(e.target.value)}
+                            placeholder="AQ.Ab8... / AIzaSy..."
+                            className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 pr-10 text-xs text-white outline-none focus:border-brand font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowGeminiKey(!showGeminiKey)}
+                            className="absolute right-3 top-2 text-midGray hover:text-white"
+                          >
+                            <Key className="size-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Anthropic Key */}
+                      <div className={`p-2.5 rounded-xl border transition-all ${cloudProvider === 'anthropic' ? 'border-brand/50 bg-brand/5' : 'border-white/10 bg-black/30'}`}>
+                        <label className="block text-xs font-semibold text-midGray mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            Anthropic API Key
+                            {cloudProvider === 'anthropic' && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-[9px] font-bold text-brand">Active</span>}
+                          </span>
+                          {anthropicKey ? (
+                            <span className="text-[10px] text-emerald-400 font-medium">✓ Key Configured</span>
+                          ) : (
+                            <span className="text-[10px] text-midGray">Not Set</span>
+                          )}
                         </label>
                         <div className="relative">
                           <input
@@ -359,25 +422,30 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             value={anthropicKey}
                             onChange={(e) => setAnthropicKey(e.target.value)}
                             placeholder="sk-ant-api03-..."
-                            className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 pr-10 text-xs text-white outline-none focus:border-brand font-mono"
+                            className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 pr-10 text-xs text-white outline-none focus:border-brand font-mono"
                           />
                           <button
                             type="button"
                             onClick={() => setShowAnthropicKey(!showAnthropicKey)}
-                            className="absolute right-3 top-2.5 text-midGray hover:text-white"
+                            className="absolute right-3 top-2 text-midGray hover:text-white"
                           >
                             <Key className="size-3.5" />
                           </button>
                         </div>
                       </div>
-                    )}
 
-                    {/* OpenAI Key */}
-                    {cloudProvider === 'openai' && (
-                      <div>
-                        <label className="block text-xs font-semibold text-midGray mb-1.5 flex items-center justify-between">
-                          <span>OpenAI API Key</span>
-                          <span className="text-[10px] text-accent">Stored securely in config</span>
+                      {/* OpenAI Key */}
+                      <div className={`p-2.5 rounded-xl border transition-all ${cloudProvider === 'openai' ? 'border-brand/50 bg-brand/5' : 'border-white/10 bg-black/30'}`}>
+                        <label className="block text-xs font-semibold text-midGray mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            OpenAI API Key
+                            {cloudProvider === 'openai' && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-[9px] font-bold text-brand">Active</span>}
+                          </span>
+                          {openaiKey ? (
+                            <span className="text-[10px] text-emerald-400 font-medium">✓ Key Configured</span>
+                          ) : (
+                            <span className="text-[10px] text-midGray">Not Set</span>
+                          )}
                         </label>
                         <div className="relative">
                           <input
@@ -385,44 +453,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             value={openaiKey}
                             onChange={(e) => setOpenaiKey(e.target.value)}
                             placeholder="sk-..."
-                            className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 pr-10 text-xs text-white outline-none focus:border-brand font-mono"
+                            className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 pr-10 text-xs text-white outline-none focus:border-brand font-mono"
                           />
                           <button
                             type="button"
                             onClick={() => setShowOpenaiKey(!showOpenaiKey)}
-                            className="absolute right-3 top-2.5 text-midGray hover:text-white"
+                            className="absolute right-3 top-2 text-midGray hover:text-white"
                           >
                             <Key className="size-3.5" />
                           </button>
                         </div>
                       </div>
-                    )}
-
-                    {/* Gemini Key */}
-                    {cloudProvider === 'gemini' && (
-                      <div>
-                        <label className="block text-xs font-semibold text-midGray mb-1.5 flex items-center justify-between">
-                          <span>Google Gemini API Key</span>
-                          <span className="text-[10px] text-accent">Stored securely in config</span>
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showGeminiKey ? 'text' : 'password'}
-                            value={geminiKey}
-                            onChange={(e) => setGeminiKey(e.target.value)}
-                            placeholder="AIzaSy..."
-                            className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 pr-10 text-xs text-white outline-none focus:border-brand font-mono"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowGeminiKey(!showGeminiKey)}
-                            className="absolute right-3 top-2.5 text-midGray hover:text-white"
-                          >
-                            <Key className="size-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 )}
 
