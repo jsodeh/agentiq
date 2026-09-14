@@ -13,9 +13,13 @@ pub struct GeminiClient {
 
 impl GeminiClient {
     pub fn new(api_key: String) -> Self {
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .unwrap_or_else(|_| Client::new());
         Self {
             api_key,
-            client: Client::new(),
+            client,
         }
     }
 }
@@ -33,17 +37,6 @@ impl LlmClient for GeminiClient {
 
         let mut contents: Vec<Value> = Vec::new();
 
-        if let Some(sys) = &request.system_prompt {
-            contents.push(json!({
-                "role": "user",
-                "parts": [{"text": format!("System prompt: {}", sys)}]
-            }));
-            contents.push(json!({
-                "role": "model",
-                "parts": [{"text": "Understood."}]
-            }));
-        }
-
         for msg in &request.messages {
             let role = match msg.role.as_str() {
                 "user" => "user",
@@ -59,6 +52,12 @@ impl LlmClient for GeminiClient {
         let mut body = json!({
             "contents": contents,
         });
+
+        if let Some(sys) = &request.system_prompt {
+            body["system_instruction"] = json!({
+                "parts": [{"text": sys}]
+            });
+        }
 
         if let Some(temp) = request.temperature {
             body["generationConfig"] = json!({
