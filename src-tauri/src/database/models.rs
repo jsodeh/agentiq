@@ -115,3 +115,23 @@ pub struct VerificationCapture {
     pub capture_path: String,
     pub timestamp: i64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnowledgeItem {
+    pub id: i64,
+    pub title: String,
+    pub content: String,
+    pub category: String,
+    pub tags: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemMemory {
+    pub id: i64,
+    pub user_id: i64,
+    pub key: String,
+    pub value: String,
+    pub category: String,
+    pub updated_at: String,
+}

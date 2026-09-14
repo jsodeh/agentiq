@@ -233,3 +233,26 @@ CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
 CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage_log(agent_id);
 CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage_log(timestamp);
 CREATE INDEX IF NOT EXISTS idx_pending_subscriptions_reference ON pending_subscriptions(reference);
+
+-- Knowledge Base Table for Business RAG
+CREATE TABLE IF NOT EXISTS knowledge_base (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  category TEXT DEFAULT 'general',
+  tags TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- System Shared Memory Table for Long-term Context & Facts
+CREATE TABLE IF NOT EXISTS system_memory (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL DEFAULT 1,
+  key TEXT UNIQUE NOT NULL,
+  value TEXT NOT NULL,
+  category TEXT DEFAULT 'general',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge_base(category);
+CREATE INDEX IF NOT EXISTS idx_memory_key ON system_memory(key);
