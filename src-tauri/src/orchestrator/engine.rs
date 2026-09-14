@@ -59,7 +59,7 @@ impl OrchestratorEngine {
         let tools = self.tools.clone();
         let agent_registry = self.agent_registry.clone();
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             tracing::info!("Native Rust Orchestrator Engine started");
 
             while is_running.load(Ordering::SeqCst) {

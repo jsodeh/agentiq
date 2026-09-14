@@ -38,6 +38,15 @@ fn main() {
     registry.load_defaults();
     let custom_plugins_dir = AppConfig::get_config_dir().join("plugins");
     let _ = registry.load_from_dir(&custom_plugins_dir);
+
+    // Load single-source-of-truth agent definitions from src/agents/data
+    let shared_data_dir = std::env::current_dir()
+        .unwrap_or_default()
+        .join("src")
+        .join("agents")
+        .join("data");
+    let _ = registry.load_from_dir(&shared_data_dir);
+
     let agent_registry = Arc::new(registry);
 
     let native_orchestrator = NativeOrchestratorState::new(
@@ -52,8 +61,8 @@ fn main() {
         .manage(db_pool)
         .manage(app_config)
         .manage(agent_registry)
-        .manage(native_orchestrator)
-        .setup(|app| {
+        .manage(native_orchestrator.clone())
+        .setup(move |app| {
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let start_all =
                 MenuItem::with_id(app, "start_all", "Start All Agents", true, None::<&str>)?;
@@ -64,8 +73,12 @@ fn main() {
 
             let menu = Menu::with_items(app, &[&dashboard, &start_all, &stop_all, &quit_item])?;
 
-            let _tray = TrayIconBuilder::new()
-                .menu(&menu)
+            let mut tray_builder = TrayIconBuilder::new().menu(&menu);
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+
+            if let Err(err) = tray_builder
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         app.exit(0);
@@ -84,12 +97,20 @@ fn main() {
                     }
                     _ => {}
                 })
-                .build(app)?;
+                .build(app)
+            {
+                tracing::warn!("Could not create tray icon: {}", err);
+            }
 
             #[cfg(desktop)]
             app.deep_link().on_open_url(|event| {
                 info!("Deep link received: {:?}", event.urls());
             });
+
+            // Automatically start native orchestrator engine
+            if let Err(e) = native_orchestrator.start() {
+                tracing::warn!("Failed to auto-start native orchestrator: {}", e);
+            }
 
             Ok(())
         })

@@ -1,12 +1,18 @@
 use std::sync::Arc;
 use tauri::State;
 use tracing::info;
+
 use crate::agents::AgentPluginRegistry;
 use crate::errors::AppError;
+use crate::orchestrator::NativeOrchestratorState;
 
 #[tauri::command]
-pub fn start_agent(agent_id: i32) -> Result<String, AppError> {
+pub fn start_agent(
+    orchestrator: State<'_, NativeOrchestratorState>,
+    agent_id: i32,
+) -> Result<String, AppError> {
     info!("Starting agent: {}", agent_id);
+    let _ = orchestrator.start();
     Ok(format!("Agent {} started", agent_id))
 }
 

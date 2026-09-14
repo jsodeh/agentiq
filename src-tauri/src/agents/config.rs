@@ -10,8 +10,11 @@ pub struct AgentPluginConfig {
     pub id: String,
     pub name: String,
     pub description: String,
+    #[serde(default)]
     pub keywords: Vec<String>,
+    #[serde(default, alias = "tools", alias = "composioTools")]
     pub activated_tools: Vec<String>,
+    #[serde(alias = "systemPrompt")]
     pub system_prompt: String,
     pub default_model: Option<String>,
 }
@@ -137,10 +140,17 @@ impl AgentPluginRegistry {
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+            let ext = path.extension().and_then(|s| s.to_str());
+            if ext == Some("json") {
+                let content = fs::read_to_string(&path)?;
+                if let Ok(config) = serde_json::from_str::<AgentPluginConfig>(&content) {
+                    info!("Loaded custom agent plugin (JSON): {}", config.id);
+                    self.plugins.insert(config.id.clone(), config);
+                }
+            } else if ext == Some("toml") {
                 let content = fs::read_to_string(&path)?;
                 if let Ok(config) = toml::from_str::<AgentPluginConfig>(&content) {
-                    info!("Loaded custom agent plugin: {}", config.id);
+                    info!("Loaded custom agent plugin (TOML): {}", config.id);
                     self.plugins.insert(config.id.clone(), config);
                 }
             }

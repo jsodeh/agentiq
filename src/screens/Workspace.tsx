@@ -194,7 +194,6 @@ function WorkspaceContent() {
         const { taskId, result } = event.payload;
         console.log('[Workspace] Task completed:', taskId);
         setMessages((current) => {
-          // Remove intermediate messages
           const filtered = current.filter(m => 
             !m.id.startsWith(`thinking-${taskId}`) && 
             !m.id.startsWith(`action-${taskId}`) &&
@@ -216,6 +215,24 @@ function WorkspaceContent() {
       })
     );
 
+    // Listen for task failed
+    unlistenPromises.push(
+      listen<AgentEvent>('task_failed', (event) => {
+        const { taskId, error } = event.payload;
+        console.log('[Workspace] Task failed:', taskId, error);
+        setMessages((current) => [
+          ...current,
+          {
+            id: `task-failed-${taskId}`,
+            role: 'assistant',
+            content: `Task execution encountered an error: ${error || 'Unknown error'}`,
+            meta: 'Task Error'
+          }
+        ]);
+        setIsWorking(false);
+      })
+    );
+
     // Cleanup listeners on unmount
     return () => {
       Promise.all(unlistenPromises).then((unlisteners) => {
@@ -227,129 +244,51 @@ function WorkspaceContent() {
   const submitTask = async (description: string) => {
     const msgId = `user-${Date.now()}`;
     setMessages((current) => [...current, { id: msgId, role: 'user', content: description }]);
-    const direct = isDirectChat(description);
-    setWorkingText(direct ? 'Thinking…' : 'Preparing agent & tools…');
+    setWorkingText('Thinking…');
     setIsWorking(true);
 
-    // ─── FAST DIRECT CHAT PATH ──────────────────────────────────────────────────
-    if (direct) {
-      try {
-        const userId = profile.id || 1;
-
-        // Ensure we have a conversation & agent record
-        let conversationId = currentConversationId;
-        if (!conversationId) {
-          const agentId = await invoke<number>('get_or_create_agent', {
-            agentType: 'assistant',
-            userId,
-          });
-          conversationId = await invoke<number>('create_conversation', {
-            agentId,
-            title: description.substring(0, 50),
-          });
-          setCurrentConversationId(conversationId);
-        }
-
-        const response = await invoke<ChatResponse>('send_chat_message', {
-          conversationId,
-          message: description,
-        });
-
-        setMessages((current) => [
-          ...current,
-          {
-            id: `reply-${response.message_id}`,
-            role: 'assistant',
-            content: response.content,
-          },
-        ]);
-      } catch (error) {
-        console.error('[Workspace] Direct chat error:', error);
-        setMessages((current) => [
-          ...current,
-          {
-            id: `error-${Date.now()}`,
-            role: 'assistant',
-            content: "I'm sorry, I couldn't respond right now. Please try again.",
-            meta: String(error),
-          },
-        ]);
-      } finally {
-        setIsWorking(false);
-      }
-      return;
-    }
-
-    // ─── FULL AGENTIC WORKFLOW PATH ──────────────────────────────────────────────
+    // Route all messages via direct chat path (with enriched prompt for research/search)
     try {
-      // 1. Prepare task (route to appropriate agent)
-      const prep = await invoke<TaskPreparation>('prepare_task', { description });
-      console.log('[Workspace] Task prepared:', prep);
-
-      // 2. Get or create agent in database
       const userId = profile.id || 1;
-      const agentId = await invoke<number>('get_or_create_agent', { 
-        agentType: prep.agent_id, 
-        userId 
-      });
-      console.log('[Workspace] Agent ID:', agentId);
 
-      // 3. Create conversation if this is the first message
       let conversationId = currentConversationId;
       if (!conversationId) {
+        const agentId = await invoke<number>('get_or_create_agent', {
+          agentType: 'assistant',
+          userId,
+        });
         conversationId = await invoke<number>('create_conversation', {
           agentId,
-          title: description.substring(0, 50)
+          title: description.substring(0, 50),
         });
         setCurrentConversationId(conversationId);
-        console.log('[Workspace] Conversation created:', conversationId);
       }
 
-      // 4. Add user message to database
-      await invoke('add_message', {
+      const response = await invoke<ChatResponse>('send_chat_message', {
         conversationId,
-        role: 'user',
-        content: description
+        message: description,
       });
 
-      // 5. Create task in database
-      const taskId = await invoke<number>('create_task', {
-        agentId,
-        description
-      });
-      setCurrentTaskId(taskId);
-      console.log('[Workspace] Task created:', taskId);
-
-      // 6. Show agent routing banner
       setMessages((current) => [
         ...current,
         {
-          id: prep.task_id,
+          id: `reply-${response.message_id}`,
           role: 'assistant',
-          content: `Routing to ${prep.agent_name} · Working on it…`,
-          meta: prep.activated_tools.join(' · ')
-        }
+          content: response.content,
+        },
       ]);
-
-      // 7. Start the agent
-      try {
-        const orchestratorClient = getOrchestratorClient();
-        await orchestratorClient.runAgent(agentId);
-      } catch (error) {
-        console.error('[Workspace] Failed to start agent:', error);
-      }
-
     } catch (error) {
-      console.error('[Workspace] Task submission error:', error);
+      console.error('[Workspace] Chat error:', error);
       setMessages((current) => [
         ...current,
         {
           id: `error-${Date.now()}`,
           role: 'assistant',
-          content: `I couldn't prepare that task yet. Please try again.`,
-          meta: String(error)
-        }
+          content: "I'm sorry, I couldn't respond right now. Please try again.",
+          meta: String(error),
+        },
       ]);
+    } finally {
       setIsWorking(false);
     }
   };

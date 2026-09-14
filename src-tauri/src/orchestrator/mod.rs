@@ -15,6 +15,7 @@ use crate::errors::AppError;
 use engine::OrchestratorEngine;
 use events::EventBus;
 
+#[derive(Clone)]
 pub struct NativeOrchestratorState {
     pub engine: Arc<OrchestratorEngine>,
     pub event_bus: Arc<EventBus>,
