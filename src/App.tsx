@@ -1,6 +1,11 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+
+/** Apply / remove the `dark` class on <html> based on OS preference. */
+function applySystemTheme(mq: MediaQueryList | MediaQueryListEvent) {
+  document.documentElement.classList.toggle('dark', mq.matches);
+}
 import Dashboard from './screens/Dashboard';
 import WizardScreen from './screens/WizardScreen';
 import AgentDetail from './screens/AgentDetail';
@@ -20,7 +25,15 @@ function RootRoute() {
 }
 
 function App() {
-  // Initialize database on app startup
+  // ── System dark/light mode ──────────────────────────────────────────────
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    applySystemTheme(mq);                          // apply immediately
+    mq.addEventListener('change', applySystemTheme); // react to OS changes
+    return () => mq.removeEventListener('change', applySystemTheme);
+  }, []);
+
+  // ── Initialize database on app startup ──────────────────────────────────
   useEffect(() => {
     const initApp = async () => {
       try {

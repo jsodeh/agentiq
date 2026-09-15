@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Inbox, Users, ChevronDown, Sparkles } from 'lucide-react';
+import { ChevronDown, Inbox, Users } from 'lucide-react';
 import { ProfileItem } from './ProfileManagerModal';
 
 interface WorkspaceHeaderPanelProps {
@@ -33,48 +33,64 @@ export function WorkspaceHeaderPanel({
     fetchActiveProfile();
   }, []);
 
+  // ── Shared icon-button base classes ─────────────────────────────────────
+  const iconBtn =
+    'grid size-8 place-items-center rounded-xl border transition-colors ' +
+    'border-black/10 bg-black/[0.04] text-gray-600 ' +
+    'hover:border-brand/40 hover:bg-black/[0.08] hover:text-[#0a0a0f] ' +
+    'dark:border-white/10 dark:bg-[#161620] dark:text-gray-300 ' +
+    'dark:hover:border-brand/40 dark:hover:bg-[#1d1d2b] dark:hover:text-white';
+
   return (
     <div className="flex items-center gap-2">
-      {/* Profile Switcher Button */}
+
+      {/* ── Profile Switcher ── */}
       <button
         onClick={onOpenProfileManager}
         title="Switch Business Profile / Tier"
-        className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#161620] px-3 py-1.5 text-xs text-gray-200 transition-colors hover:border-brand/40 hover:bg-[#1d1d2b] hover:text-white"
+        className={
+          'flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition-colors ' +
+          'border-black/10 bg-black/[0.04] text-gray-700 ' +
+          'hover:border-brand/40 hover:bg-black/[0.08] hover:text-[#0a0a0f] ' +
+          'dark:border-white/10 dark:bg-[#161620] dark:text-gray-200 ' +
+          'dark:hover:border-brand/40 dark:hover:bg-[#1d1d2b] dark:hover:text-white'
+        }
       >
         <span className="grid size-5 place-items-center rounded bg-brand/20 text-[10px] font-bold text-brand">
           {activeProfile ? activeProfile.name.slice(0, 2).toUpperCase() : 'AI'}
         </span>
-        <span className="font-semibold max-w-[130px] truncate">
+        <span className="max-w-[130px] truncate font-semibold">
           {activeProfile?.name || 'Default Profile'}
         </span>
-        <span className="rounded bg-brand/15 px-1.5 py-0.5 text-[9px] font-bold text-brand uppercase">
+        <span className="rounded bg-brand/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-brand">
           {activeProfile?.tier || 'Base'}
         </span>
         <ChevronDown className="size-3.5 text-gray-400" />
       </button>
 
-      {/* Team Button */}
+      {/* ── Team Button ── */}
       <button
         onClick={onOpenTeam}
         title="Team Members & Collaboration"
-        className="grid size-8 place-items-center rounded-xl border border-white/10 bg-[#161620] text-gray-300 transition-colors hover:border-brand/40 hover:bg-[#1d1d2b] hover:text-white"
+        className={iconBtn}
       >
         <Users className="size-4" />
       </button>
 
-      {/* Inbox Button + Badge */}
+      {/* ── Inbox Button + Badge ── */}
       <button
         onClick={onOpenInbox}
         title="Inbox & Task Alerts"
-        className="relative grid size-8 place-items-center rounded-xl border border-white/10 bg-[#161620] text-gray-300 transition-colors hover:border-brand/40 hover:bg-[#1d1d2b] hover:text-white"
+        className={`relative ${iconBtn}`}
       >
         <Inbox className="size-4" />
         {unreadInboxCount > 0 && (
-          <span className="absolute -right-1 -top-1 grid min-w-4 h-4 place-items-center rounded-full bg-brand px-1 text-[9px] font-bold text-white shadow-md">
+          <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[9px] font-bold text-white shadow-md">
             {unreadInboxCount}
           </span>
         )}
       </button>
+
     </div>
   );
 }
