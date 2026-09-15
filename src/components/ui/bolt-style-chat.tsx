@@ -3,6 +3,8 @@ import { Brain, ChevronDown, Lightbulb, Paperclip, Plus, SendHorizontal, Sparkle
 import { AnimatePresence, motion } from 'framer-motion';
 import { WorkspaceBottomMenu, WorkspaceSidebar } from './workspace-navigation';
 import { SettingsModal } from './SettingsModal';
+import { KnowledgeBaseModal } from './KnowledgeBaseModal';
+import { CustomSkillModal } from './CustomSkillModal';
 
 export type WorkspaceMessage = {
   id: string;
@@ -36,6 +38,8 @@ export function BoltStyleChat({
   const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [bottomMenuOpen, setBottomMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
+  const [customSkillModalOpen, setCustomSkillModalOpen] = useState(false);
   const [notice, setNotice]             = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const end      = useRef<HTMLDivElement>(null);
@@ -74,6 +78,10 @@ export function BoltStyleChat({
   const handleNavigation = (label: string) => {
     if (label === 'Settings' || label === 'Profile') {
       setSettingsOpen(true);
+    } else if (label === 'Knowledge Base') {
+      setKnowledgeModalOpen(true);
+    } else if (label === 'Custom Skills') {
+      setCustomSkillModalOpen(true);
     } else if (label === 'New task') {
       setInput(''); textarea.current?.focus(); setNotice('Ready for a new task.');
     } else if (label === 'Workspace') {
@@ -398,6 +406,8 @@ export function BoltStyleChat({
 
       <WorkspaceBottomMenu open={bottomMenuOpen} onToggle={toggleBottom} onAction={handleNavigation} />
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <KnowledgeBaseModal isOpen={knowledgeModalOpen} onClose={() => setKnowledgeModalOpen(false)} />
+      <CustomSkillModal isOpen={customSkillModalOpen} onClose={() => setCustomSkillModalOpen(false)} />
     </div>
   );
 }

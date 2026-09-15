@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Activity, Bot, ChevronLeft, ChevronRight, Clock3, Menu, MessageSquareText, Plus, Settings, Sparkles, type LucideIcon } from 'lucide-react';
+import { Activity, Bot, ChevronLeft, ChevronRight, Clock3, Database, Menu, MessageSquareText, Plus, Settings, Sparkles, type LucideIcon } from 'lucide-react';
 
 type NavAction = (label: string) => void;
 const navItems: Array<{ label: string; icon: LucideIcon; active?: boolean }> = [
-  { label: 'New task', icon: Plus }, { label: 'Workspace', icon: MessageSquareText, active: true }, { label: 'Activity', icon: Activity }, { label: 'Agents', icon: Bot }, { label: 'History', icon: Clock3 },
+  { label: 'New task', icon: Plus },
+  { label: 'Workspace', icon: MessageSquareText, active: true },
+  { label: 'Knowledge Base', icon: Database },
+  { label: 'Custom Skills', icon: Sparkles },
+  { label: 'Activity', icon: Activity },
+  { label: 'Agents', icon: Bot },
+  { label: 'History', icon: Clock3 },
 ];
 
 export function WorkspaceSidebar({ open, onToggle, onAction, username }: { open: boolean; onToggle: () => void; onAction: NavAction; username?: string }) {

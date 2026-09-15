@@ -2,6 +2,7 @@ pub mod engine;
 pub mod escalation;
 pub mod events;
 pub mod executor;
+pub mod master;
 pub mod parser;
 pub mod queue;
 

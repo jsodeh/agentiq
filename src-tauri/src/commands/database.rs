@@ -78,3 +78,54 @@ pub fn get_or_create_agent(
     let id = Queries::get_or_create_agent(&conn, &agent_type, user_id as i64)?;
     Ok(id)
 }
+
+#[tauri::command]
+pub fn get_knowledge_items(
+    pool: State<'_, DbPool>,
+) -> Result<String, AppError> {
+    let conn = pool.get()?;
+    let items = crate::database::knowledge::KnowledgeQueries::get_all_items(&conn)?;
+    let serialized = serde_json::to_string(&items)?;
+    Ok(serialized)
+}
+
+#[tauri::command]
+pub fn add_knowledge_item(
+    pool: State<'_, DbPool>,
+    title: String,
+    content: String,
+    category: String,
+    tags: Option<String>,
+) -> Result<i64, AppError> {
+    let conn = pool.get()?;
+    let id = crate::database::knowledge::KnowledgeQueries::add_item(
+        &conn,
+        &title,
+        &content,
+        &category,
+        tags.as_deref(),
+    )?;
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn delete_knowledge_item(
+    pool: State<'_, DbPool>,
+    id: i64,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    crate::database::knowledge::KnowledgeQueries::delete_item(&conn, id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn search_knowledge_items(
+    pool: State<'_, DbPool>,
+    query: String,
+) -> Result<String, AppError> {
+    let conn = pool.get()?;
+    let items = crate::database::knowledge::KnowledgeQueries::search_items(&conn, &query)?;
+    let serialized = serde_json::to_string(&items)?;
+    Ok(serialized)
+}
+

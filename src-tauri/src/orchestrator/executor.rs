@@ -39,7 +39,7 @@ impl TaskExecutor {
         queries::create_log(&conn, task_id, agent_id, "info", "Task started", None)?;
         drop(conn);
 
-        // 2. Load agent config/prompt
+        // 2. Load agent config/prompt & build hydrated system prompt
         let agent_type = {
             let conn = pool.get()?;
             queries::get_agent_by_id(&conn, agent_id)?
@@ -47,27 +47,10 @@ impl TaskExecutor {
                 .unwrap_or_else(|| "default".into())
         };
 
-        let base_prompt = if let Some(plugin) = agent_registry.get(&agent_type) {
-            plugin.system_prompt.clone()
-        } else {
-            format!(
-                "You are AgentIQ, an intelligent AI agent (role: '{}'). Analyze the user's task and respond naturally.",
-                agent_type
-            )
-        };
-
-        let system_prompt = format!(
-            "{}\n\n\
-            Available Tools for Intelligent Execution:\n\
-            - web_search / google_search / exa_search: Search the web for latest info (params: {{\"query\": \"...\"}})\n\
-            - browser_open_url / scrapestack_extract_content: Scrape or open website content (params: {{\"url\": \"...\"}})\n\
-            - google_maps_search: Search maps and local business listings (params: {{\"query\": \"...\"}})\n\
-            - read_file / write_file / list_directory: Perform local filesystem operations\n\
-            - send_email: Send emails via configured integrations\n\n\
-            INSTRUCTION: Analyze the user's request. If tools are needed to fulfill the task, output a JSON action plan in this format:\n\
-            {{\"reasoning\": \"...\", \"expected_outcome\": \"...\", \"actions\": [{{\"tool\": \"web_search\", \"params\": {{\"query\": \"...\"}}, \"description\": \"...\"}}]}}\n\
-            If no tools are needed, reply directly in natural language without JSON.",
-            base_prompt
+        let system_prompt = crate::orchestrator::master::MasterOrchestrator::build_hydrated_system_prompt(
+            &pool,
+            &agent_registry,
+            &agent_type,
         );
 
         // 3. Load recent conversation history for this agent to give context

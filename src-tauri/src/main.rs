@@ -8,6 +8,7 @@ mod errors;
 mod llm;
 mod logging;
 mod orchestrator;
+mod system;
 mod tools;
 
 use parking_lot::Mutex as ParkingMutex;
@@ -129,6 +130,10 @@ fn main() {
             commands::database::get_conversation_messages,
             commands::database::update_task_status,
             commands::database::get_or_create_agent,
+            commands::database::get_knowledge_items,
+            commands::database::add_knowledge_item,
+            commands::database::delete_knowledge_item,
+            commands::database::search_knowledge_items,
             commands::chat::send_chat_message,
             // System & setup commands
             commands::system::check_ollama,
