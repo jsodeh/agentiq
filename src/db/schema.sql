@@ -256,3 +256,47 @@ CREATE TABLE IF NOT EXISTS system_memory (
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge_base(category);
 CREATE INDEX IF NOT EXISTS idx_memory_key ON system_memory(key);
+
+-- Profiles Table for Multi-Profile / Multi-Tenant System
+CREATE TABLE IF NOT EXISTS profiles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL DEFAULT 1,
+  name TEXT NOT NULL,
+  avatar_url TEXT,
+  tier TEXT DEFAULT 'base' CHECK(tier IN ('base', 'pro', 'agency')),
+  max_accounts_per_platform INTEGER DEFAULT 1,
+  is_active BOOLEAN DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Inbox Messages Table
+CREATE TABLE IF NOT EXISTS inbox_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL DEFAULT 1,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  type TEXT DEFAULT 'info' CHECK(type IN ('info', 'approval', 'alert', 'task_done')),
+  read BOOLEAN DEFAULT 0,
+  action_url TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+);
+
+-- Team Members Table
+CREATE TABLE IF NOT EXISTS team_members (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL DEFAULT 1,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  role TEXT DEFAULT 'member' CHECK(role IN ('owner', 'admin', 'member', 'viewer')),
+  status TEXT DEFAULT 'active',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_inbox_profile ON inbox_messages(profile_id);
+CREATE INDEX IF NOT EXISTS idx_inbox_read ON inbox_messages(read);
+CREATE INDEX IF NOT EXISTS idx_team_profile ON team_members(profile_id);
+

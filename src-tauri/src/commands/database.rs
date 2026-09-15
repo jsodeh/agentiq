@@ -129,3 +129,79 @@ pub fn search_knowledge_items(
     Ok(serialized)
 }
 
+#[tauri::command]
+pub fn get_all_profiles(
+    pool: State<'_, DbPool>,
+) -> Result<String, AppError> {
+    let conn = pool.get()?;
+    let items = crate::database::profiles::ProfileQueries::get_all_profiles(&conn)?;
+    let serialized = serde_json::to_string(&items)?;
+    Ok(serialized)
+}
+
+#[tauri::command]
+pub fn switch_profile(
+    pool: State<'_, DbPool>,
+    profile_id: i64,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    crate::database::profiles::ProfileQueries::set_active_profile(&conn, profile_id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn create_profile(
+    pool: State<'_, DbPool>,
+    name: String,
+    tier: String,
+) -> Result<i64, AppError> {
+    let conn = pool.get()?;
+    let id = crate::database::profiles::ProfileQueries::create_profile(&conn, &name, &tier)?;
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn get_inbox_messages(
+    pool: State<'_, DbPool>,
+    profile_id: i64,
+) -> Result<String, AppError> {
+    let conn = pool.get()?;
+    let items = crate::database::profiles::ProfileQueries::get_inbox_messages(&conn, profile_id)?;
+    let serialized = serde_json::to_string(&items)?;
+    Ok(serialized)
+}
+
+#[tauri::command]
+pub fn mark_inbox_read(
+    pool: State<'_, DbPool>,
+    message_id: i64,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    crate::database::profiles::ProfileQueries::mark_inbox_read(&conn, message_id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_team_members(
+    pool: State<'_, DbPool>,
+    profile_id: i64,
+) -> Result<String, AppError> {
+    let conn = pool.get()?;
+    let items = crate::database::profiles::ProfileQueries::get_team_members(&conn, profile_id)?;
+    let serialized = serde_json::to_string(&items)?;
+    Ok(serialized)
+}
+
+#[tauri::command]
+pub fn add_team_member(
+    pool: State<'_, DbPool>,
+    profile_id: i64,
+    name: String,
+    email: String,
+    role: String,
+) -> Result<i64, AppError> {
+    let conn = pool.get()?;
+    let id = crate::database::profiles::ProfileQueries::add_team_member(&conn, profile_id, &name, &email, &role)?;
+    Ok(id)
+}
+

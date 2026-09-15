@@ -134,6 +134,13 @@ fn main() {
             commands::database::add_knowledge_item,
             commands::database::delete_knowledge_item,
             commands::database::search_knowledge_items,
+            commands::database::get_all_profiles,
+            commands::database::switch_profile,
+            commands::database::create_profile,
+            commands::database::get_inbox_messages,
+            commands::database::mark_inbox_read,
+            commands::database::get_team_members,
+            commands::database::add_team_member,
             commands::chat::send_chat_message,
             // System & setup commands
             commands::system::check_ollama,

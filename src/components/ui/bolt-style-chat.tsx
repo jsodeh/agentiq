@@ -5,12 +5,19 @@ import { WorkspaceBottomMenu, WorkspaceSidebar } from './workspace-navigation';
 import { SettingsModal } from './SettingsModal';
 import { KnowledgeBaseModal } from './KnowledgeBaseModal';
 import { CustomSkillModal } from './CustomSkillModal';
+import { WorkspaceHeaderPanel } from './WorkspaceHeaderPanel';
+import { InboxDrawerModal } from './InboxDrawerModal';
+import { TeamModal } from './TeamModal';
+import { ProfileManagerModal } from './ProfileManagerModal';
+import { QuickActionPills } from './QuickActionPills';
+import { ToolCallsSection, ToolCallEntry } from './tool-calls-section';
 
 export type WorkspaceMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   meta?: string;
+  toolCalls?: ToolCallEntry[];
 };
 
 const models = [
@@ -32,15 +39,21 @@ export function BoltStyleChat({
   workingText?: string;
   onSend: (message: string) => void;
 }) {
-  const [input, setInput]               = useState('');
-  const [model, setModel]               = useState(models[0]);
-  const [modelOpen, setModelOpen]       = useState(false);
-  const [sidebarOpen, setSidebarOpen]   = useState(false);
-  const [bottomMenuOpen, setBottomMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [input, setInput]                     = useState('');
+  const [model, setModel]                     = useState(models[0]);
+  const [modelOpen, setModelOpen]             = useState(false);
+  const [sidebarOpen, setSidebarOpen]         = useState(false);
+  const [bottomMenuOpen, setBottomMenuOpen]   = useState(false);
+  const [settingsOpen, setSettingsOpen]       = useState(false);
   const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
   const [customSkillModalOpen, setCustomSkillModalOpen] = useState(false);
-  const [notice, setNotice]             = useState<string | null>(null);
+  const [inboxOpen, setInboxOpen]             = useState(false);
+  const [teamOpen, setTeamOpen]               = useState(false);
+  const [profileManagerOpen, setProfileManagerOpen] = useState(false);
+  const [unreadInboxCount, setUnreadInboxCount] = useState(1);
+  const [activeProfileId, setActiveProfileId] = useState(1);
+  const [notice, setNotice]                   = useState<string | null>(null);
+
   const textarea = useRef<HTMLTextAreaElement>(null);
   const end      = useRef<HTMLDivElement>(null);
   const hasMessages = messages.length > 0;
@@ -63,6 +76,11 @@ export function BoltStyleChat({
     if (!input.trim() || isWorking) return;
     onSend(input.trim());
     setInput('');
+  };
+
+  const submitWithPrompt = (promptText: string) => {
+    if (!promptText.trim() || isWorking) return;
+    onSend(promptText.trim());
   };
 
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -96,101 +114,107 @@ export function BoltStyleChat({
   const sidebarOffset = sidebarOpen ? 'md:ml-56' : 'md:ml-14';
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#09091a] text-white">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#09090b] text-white font-sans">
       <WorkspaceSidebar open={sidebarOpen} onToggle={toggleSidebar} onAction={handleNavigation} username={username} />
 
-      {/* ── Background gradient — adapted for workspace viewport ── */}
-      <div className="pointer-events-none absolute inset-0">
-        {/* Adjusted gradient: starts higher and extends lower to keep lighter tones in view */}
-        <div className="absolute inset-0 bg-[radial-gradient(100%_120%_at_50%_-10%,#fff_0%,#e8eaff_20%,#a9b7ff_45%,#6b7dff_70%,#4a4dff_85%,#09091a_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#09091a] via-[#09091a]/30 to-transparent" />
-      </div>
-
-      {/* ── Header — badge only, no logo ── */}
+      {/* ── Solid Dark Theme Header ── */}
       <header
-        className={`${hasMessages ? 'relative' : 'absolute inset-x-0 top-0'} z-10 flex items-center justify-end border-b border-white/[0.07] px-5 py-3 transition-[margin] sm:px-8 ${sidebarOffset}`}
+        className={`${hasMessages ? 'relative' : 'absolute inset-x-0 top-0'} z-10 flex items-center justify-between border-b border-white/[0.08] bg-[#0d0d12] px-5 py-3 transition-[margin] sm:px-8 ${sidebarOffset}`}
       >
-        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] text-[#a0a0a8]">
-          Autonomous workspace
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-semibold text-[#a0a0a8]">
+          AgentIQ Autonomous OS
         </span>
+
+        {/* Top-Right Control Bar */}
+        <WorkspaceHeaderPanel
+          onOpenInbox={() => setInboxOpen(true)}
+          onOpenTeam={() => setTeamOpen(true)}
+          onOpenProfileManager={() => setProfileManagerOpen(true)}
+          unreadInboxCount={unreadInboxCount}
+        />
       </header>
 
       {/* ── Main area ── */}
       {hasMessages ? (
-        /* ── Conversation view with simple, Tauri-safe rendering ── */
+        /* ── Conversation view ── */
         <main className={`relative z-10 flex flex-1 flex-col transition-[margin] ${sidebarOffset}`}>
-          {/* Container for thread - no centering, full width of parent */}
           <div className="flex-1 px-5">
-            {/* Linear message thread - contained within input width */}
             <div className="mx-auto w-full max-w-3xl pb-36 pt-6">
               {messages.map((message, index) => {
-                // Determine message type from ID prefix
                 const isThinking = message.id.startsWith('thinking-');
                 const isAction = message.id.startsWith('action-') && !message.id.includes('result') && !message.id.includes('error');
                 const isActionResult = message.id.startsWith('action-result-');
                 const isError = message.id.includes('error');
                 const isTaskComplete = message.id.startsWith('task-complete-');
-                
+
                 return (
                   <motion.div
                     key={message.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.05 }}
-                    className="group w-full border-b border-white/[0.05] py-3"
+                    transition={{ duration: 0.3, delay: index * 0.03 }}
+                    className="group w-full border-b border-white/[0.06] py-4"
                   >
                     <div className="px-3">
-                      <div className="flex items-baseline justify-between mb-1">
+                      <div className="flex items-baseline justify-between mb-1.5">
                         <div className="flex items-center gap-2">
-                          <span className={`text-[9px] uppercase font-bold tracking-widest ${
-                            message.role === 'user' ? 'text-primary/70' : 'text-emerald-500/70'
+                          <span className={`text-[10px] uppercase font-bold tracking-widest ${
+                            message.role === 'user' ? 'text-brand' : 'text-emerald-400'
                           }`}>
-                            {message.role === 'user' ? 'YOU' : 'AGENTIQ'}
+                            {message.role === 'user' ? 'YOU' : 'AGENTIQ OS'}
                           </span>
-                          {/* Event type indicator */}
                           {isThinking && (
-                            <span className="flex items-center gap-1 text-[8px] text-cyan-400/70">
-                              <Brain className="size-2.5" /> Thinking
+                            <span className="flex items-center gap-1 text-[9px] text-cyan-400">
+                              <Brain className="size-3" /> Thinking
                             </span>
                           )}
                           {isAction && (
-                            <span className="flex items-center gap-1 text-[8px] text-amber-400/70">
-                              <Zap className="size-2.5 animate-pulse" /> Executing
+                            <span className="flex items-center gap-1 text-[9px] text-amber-400">
+                              <Zap className="size-3 animate-pulse" /> Executing
                             </span>
                           )}
                           {isActionResult && (
-                            <span className="flex items-center gap-1 text-[8px] text-green-400/70">
-                              <span className="size-2 rounded-full bg-green-400" /> Completed
+                            <span className="flex items-center gap-1 text-[9px] text-emerald-400">
+                              <span className="size-2 rounded-full bg-emerald-400" /> Completed
                             </span>
                           )}
                           {isTaskComplete && (
-                            <span className="flex items-center gap-1 text-[8px] text-emerald-400/70">
-                              <Sparkles className="size-2.5" /> Done
+                            <span className="flex items-center gap-1 text-[9px] text-emerald-300 font-bold">
+                              <Sparkles className="size-3" /> Task Finished
                             </span>
                           )}
                           {isError && (
-                            <span className="flex items-center gap-1 text-[8px] text-red-400/70">
+                            <span className="flex items-center gap-1 text-[9px] text-red-400">
                               <span className="size-2 rounded-full bg-red-400" /> Error
                             </span>
                           )}
                         </div>
-                        <span className="text-[8px] text-[#a0a0a8]/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-[9px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
                           {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <div className={`text-[12px] leading-relaxed whitespace-pre-wrap ${
-                        isError ? 'text-red-300/80' : 
-                        isThinking ? 'text-cyan-100/90 italic' :
-                        'text-[#e8e8ec]'
+
+                      <div className={`text-[13px] leading-relaxed whitespace-pre-wrap ${
+                        isError ? 'text-red-300' :
+                        isThinking ? 'text-cyan-200 italic' :
+                        'text-[#e4e4e7]'
                       }`}>
                         {message.content}
                       </div>
-                      {message.meta && (
-                        <div className="mt-2 flex items-center gap-2 border-t border-white/10 pt-2">
-                          <span className={`text-[10px] font-medium ${
+
+                      {/* Stacked Tool Call Section UI Component */}
+                      {message.toolCalls && message.toolCalls.length > 0 && (
+                        <div className="mt-3">
+                          <ToolCallsSection toolCalls={message.toolCalls} defaultExpanded={false} />
+                        </div>
+                      )}
+
+                      {message.meta && !message.toolCalls && (
+                        <div className="mt-2.5 flex items-center gap-2 border-t border-white/10 pt-2">
+                          <span className={`text-[11px] font-medium ${
                             isError ? 'text-red-400' :
-                            isActionResult ? 'text-green-400' :
-                            'text-accent'
+                            isActionResult ? 'text-emerald-400' :
+                            'text-brand'
                           }`}>
                             {isError ? '⚠️' : isActionResult ? '✓' : '🔧'} {message.meta}
                           </span>
@@ -202,8 +226,8 @@ export function BoltStyleChat({
               })}
 
               {isWorking && (
-                <div className="flex items-center gap-2 border-b border-white/[0.05] px-3 py-3 text-sm text-[#a0a0a8]">
-                  <span className="size-2 animate-pulse rounded-full bg-accent" />
+                <div className="flex items-center gap-2 border-b border-white/[0.06] px-3 py-4 text-xs text-gray-400">
+                  <span className="size-2 animate-pulse rounded-full bg-brand" />
                   {workingText}
                 </div>
               )}
@@ -212,59 +236,61 @@ export function BoltStyleChat({
           </div>
         </main>
       ) : (
-        /* ── Empty / hero state — true centre of viewport ── */
-        <main
-          className="absolute inset-0 z-0 flex items-center justify-center px-5"
-        >
+        /* ── Solid Idle Viewport ── */
+        <main className="absolute inset-0 z-0 flex items-center justify-center px-5 pt-12">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex w-full max-w-xl flex-col items-center gap-4 text-center"
+            className="flex w-full max-w-2xl flex-col items-center gap-4 text-center"
           >
-            {/* Sparkle icon */}
-            <div className="grid size-12 place-items-center rounded-xl border border-brand/30 bg-brand/10 text-brand">
-              <Sparkles className="size-5" />
+            {/* Logo / Badge */}
+            <div className="grid size-12 place-items-center rounded-2xl border border-brand/40 bg-brand/15 text-brand shadow-lg">
+              <Sparkles className="size-6" />
             </div>
 
-            {/* Headline */}
-            <h1 className="text-[2.1rem] font-bold leading-tight tracking-tight text-[#12142a] sm:text-[2.7rem]">
+            <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
               What can I{' '}
-              <span className="bg-gradient-to-r from-brand via-[#a989ff] to-accent bg-clip-text text-transparent">
-                do for you?
+              <span className="text-brand">
+                automate for you?
               </span>
             </h1>
 
-            {/* ── Inline input box (empty state only) ── */}
-            <div className="mt-6 w-full rounded-2xl border border-white/[0.1] bg-[#1a1a20] shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+            {/* Quick Action Pills Component */}
+            <div className="w-full mt-2">
+              <QuickActionPills onSelect={submitWithPrompt} />
+            </div>
+
+            {/* Input box */}
+            <div className="mt-3 w-full rounded-2xl border border-white/10 bg-[#121217] shadow-2xl">
               <textarea
                 ref={textarea}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={keyDown}
                 placeholder="Describe a task, goal, or problem…"
-                className="min-h-[75px] w-full resize-none bg-transparent px-4 pb-2.5 pt-3 text-[17px] text-white outline-none placeholder:text-[#686870]"
+                className="min-h-[80px] w-full resize-none bg-transparent px-4 pb-2.5 pt-3.5 text-sm text-white outline-none placeholder:text-gray-500"
               />
-              <div className="flex items-center justify-between px-2.5 pb-2.5">
-                <div className="flex items-center gap-0.5">
-                  <button type="button" title="Attachments coming soon" className="grid size-9 place-items-center rounded-full bg-white/[0.07] text-[#9898a1] hover:bg-white/10 hover:text-white">
-                    <Plus className="size-4.5" />
+              <div className="flex items-center justify-between px-3 pb-3">
+                <div className="flex items-center gap-1">
+                  <button type="button" title="Add attachments" className="grid size-8 place-items-center rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white">
+                    <Plus className="size-4" />
                   </button>
-                  <button type="button" title="Attachments coming soon" className="grid size-9 place-items-center rounded-full text-[#9898a1] hover:bg-white/[0.07] hover:text-white">
-                    <Paperclip className="size-4.5" />
+                  <button type="button" title="Attach file" className="grid size-8 place-items-center rounded-lg text-gray-400 hover:bg-white/5 hover:text-white">
+                    <Paperclip className="size-4" />
                   </button>
                   {/* Model selector */}
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setModelOpen(!modelOpen)}
-                      className="flex items-center gap-1 rounded-full px-2 py-1 text-[14px] text-[#aaaab2] hover:bg-white/[0.07] hover:text-white"
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold text-gray-300 hover:bg-white/5"
                     >
-                      <ModelIcon className={`size-4 ${model.color}`} />
+                      <ModelIcon className={`size-3.5 ${model.color}`} />
                       {model.name}
                       <ChevronDown className="size-3" />
                     </button>
                     {modelOpen && (
-                      <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl border border-white/10 bg-[#222229] p-1 shadow-2xl">
+                      <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-white/10 bg-[#1c1c24] p-1.5 shadow-2xl z-30">
                         {models.map((item) => {
                           const Icon = item.icon;
                           return (
@@ -272,7 +298,7 @@ export function BoltStyleChat({
                               key={item.id}
                               type="button"
                               onClick={() => { setModel(item); setModelOpen(false); }}
-                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[14px] text-[#b7b7bf] hover:bg-white/[0.07] hover:text-white"
+                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white"
                             >
                               <Icon className={`size-4 ${item.color}`} />
                               {item.name}
@@ -284,73 +310,68 @@ export function BoltStyleChat({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="hidden text-[14px] text-[#777780] sm:inline">
-                    <Lightbulb className="mr-1 inline size-4" />Agent selected automatically
-                  </span>
                   <button
                     onClick={submit}
                     disabled={!input.trim() || isWorking}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[15px] font-semibold hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 shadow-md"
                   >
-                    Send <SendHorizontal className="size-4.5" />
+                    Send <SendHorizontal className="size-4" />
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Helper text below input */}
-            <p className="mt-2 w-full text-left text-[11px] leading-tight text-[#4b4d70]">
-              Describe the outcome. agēntīq selects the right specialist, prepares its capabilities, and begins the work.
+            <p className="w-full text-left text-[11px] text-gray-400">
+              AgentIQ Prime coordinates tools, knowledge base context, and specialized sub-agents to deliver turn-key executions.
             </p>
           </motion.div>
         </main>
       )}
 
-      {/* ── Pinned input bar (conversation mode only) ── */}
+      {/* ── Pinned input bar (conversation mode) ── */}
       {hasMessages && (
-        <div className={`fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-[#09091a] via-[#09091a] to-transparent px-5 pb-4 pt-10 transition-[left] md:left-14 ${sidebarOpen ? 'md:left-56' : ''}`}>
-          {/* Container matches thread width */}
+        <div className={`fixed inset-x-0 bottom-0 z-20 bg-[#09090b] px-5 pb-5 pt-4 transition-[left] md:left-14 ${sidebarOpen ? 'md:left-56' : ''}`}>
           <div className="mx-auto w-full max-w-3xl">
             <AnimatePresence>
               {notice && (
                 <motion.div
                   role="status"
                   initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-                  className="mb-2 w-fit rounded-lg border border-white/10 bg-[#222229] px-3 py-1.5 text-[11px] text-[#c7c7cf] shadow-xl"
+                  className="mb-2 w-fit rounded-lg border border-white/10 bg-[#1c1c24] px-3 py-1.5 text-xs text-gray-300 shadow-xl"
                 >
                   {notice}
                 </motion.div>
               )}
             </AnimatePresence>
-            <div className="rounded-2xl border border-white/[0.1] bg-[#1a1a20] shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+            <div className="rounded-2xl border border-white/10 bg-[#121217] shadow-2xl">
               <textarea
                 ref={textarea}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={keyDown}
                 placeholder="Describe a task, goal, or problem…"
-                className="min-h-[58px] w-full resize-none bg-transparent px-4 pb-2.5 pt-3 text-[13px] text-white outline-none placeholder:text-[#686870]"
+                className="min-h-[58px] w-full resize-none bg-transparent px-4 pb-2.5 pt-3 text-xs text-white outline-none placeholder:text-gray-500"
               />
-              <div className="flex items-center justify-between px-2.5 pb-2.5">
-                <div className="flex items-center gap-0.5">
-                  <button type="button" title="Attachments coming soon" className="grid size-7 place-items-center rounded-full bg-white/[0.07] text-[#9898a1] hover:bg-white/10 hover:text-white">
+              <div className="flex items-center justify-between px-3 pb-2.5">
+                <div className="flex items-center gap-1">
+                  <button type="button" title="Add attachments" className="grid size-7 place-items-center rounded-lg bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white">
                     <Plus className="size-3.5" />
                   </button>
-                  <button type="button" title="Attachments coming soon" className="grid size-7 place-items-center rounded-full text-[#9898a1] hover:bg-white/[0.07] hover:text-white">
+                  <button type="button" title="Attach file" className="grid size-7 place-items-center rounded-lg text-gray-400 hover:bg-white/5 hover:text-white">
                     <Paperclip className="size-3.5" />
                   </button>
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setModelOpen(!modelOpen)}
-                      className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-[#aaaab2] hover:bg-white/[0.07] hover:text-white"
+                      className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-gray-300 hover:bg-white/5"
                     >
                       <ModelIcon className={`size-3 ${model.color}`} />
                       {model.name}
-                      <ChevronDown className="size-2.5" />
+                      <ChevronDown className="size-3" />
                     </button>
                     {modelOpen && (
-                      <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl border border-white/10 bg-[#222229] p-1 shadow-2xl">
+                      <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-white/10 bg-[#1c1c24] p-1.5 shadow-2xl z-30">
                         {models.map((item) => {
                           const Icon = item.icon;
                           return (
@@ -358,9 +379,9 @@ export function BoltStyleChat({
                               key={item.id}
                               type="button"
                               onClick={() => { setModel(item); setModelOpen(false); }}
-                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-[#b7b7bf] hover:bg-white/[0.07] hover:text-white"
+                              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white"
                             >
-                              <Icon className={`size-3 ${item.color}`} />
+                              <Icon className={`size-3.5 ${item.color}`} />
                               {item.name}
                             </button>
                           );
@@ -370,13 +391,10 @@ export function BoltStyleChat({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="hidden text-[11px] text-[#777780] sm:inline">
-                    <Lightbulb className="mr-1 inline size-3" />Agent selected automatically
-                  </span>
                   <button
                     onClick={submit}
                     disabled={!input.trim() || isWorking}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-[12px] font-semibold hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Send <SendHorizontal className="size-3.5" />
                   </button>
@@ -387,27 +405,18 @@ export function BoltStyleChat({
         </div>
       )}
 
-      {/* Notice toast (empty state) */}
-      {!hasMessages && (
-        <div className="fixed bottom-5 left-1/2 z-20 -translate-x-1/2">
-          <AnimatePresence>
-            {notice && (
-              <motion.div
-                role="status"
-                initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-                className="w-fit rounded-lg border border-white/10 bg-[#222229] px-3 py-1.5 text-[11px] text-[#c7c7cf] shadow-xl"
-              >
-                {notice}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
-
+      {/* Modals */}
       <WorkspaceBottomMenu open={bottomMenuOpen} onToggle={toggleBottom} onAction={handleNavigation} />
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <KnowledgeBaseModal isOpen={knowledgeModalOpen} onClose={() => setKnowledgeModalOpen(false)} />
       <CustomSkillModal isOpen={customSkillModalOpen} onClose={() => setCustomSkillModalOpen(false)} />
+      <InboxDrawerModal isOpen={inboxOpen} profileId={activeProfileId} onClose={() => setInboxOpen(false)} onUpdateUnread={setUnreadInboxCount} />
+      <TeamModal isOpen={teamOpen} profileId={activeProfileId} onClose={() => setTeamOpen(false)} />
+      <ProfileManagerModal
+        isOpen={profileManagerOpen}
+        onClose={() => setProfileManagerOpen(false)}
+        onProfileSwitched={(p) => setActiveProfileId(p.id)}
+      />
     </div>
   );
 }

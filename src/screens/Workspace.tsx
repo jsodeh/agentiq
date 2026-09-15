@@ -133,17 +133,36 @@ function WorkspaceContent() {
     // Listen for action started
     unlistenPromises.push(
       listen<AgentEvent>('action_started', (event) => {
-        const { taskId, tool, description } = event.payload;
+        const { taskId, tool, description, params } = event.payload;
         console.log('[Workspace] Action started:', tool);
-        setMessages((current) => [
-          ...current,
-          {
-            id: `action-${taskId}-${tool}`,
-            role: 'assistant',
-            content: description || `Executing ${tool}...`,
-            meta: `Tool: ${tool}`
+        setMessages((current) => {
+          const activeMsgId = `task-run-${taskId}`;
+          const existing = current.find((m) => m.id === activeMsgId);
+          const newToolCall = {
+            tool_name: tool || 'unknown_tool',
+            tool_category: tool?.split('_')[0] || 'general',
+            message: description || `Executing ${tool}...`,
+            inputs: params,
+          };
+
+          if (existing) {
+            return current.map((m) =>
+              m.id === activeMsgId
+                ? { ...m, toolCalls: [...(m.toolCalls || []), newToolCall] }
+                : m
+            );
+          } else {
+            return [
+              ...current,
+              {
+                id: activeMsgId,
+                role: 'assistant',
+                content: `Executing workflow steps...`,
+                toolCalls: [newToolCall],
+              },
+            ];
           }
-        ]);
+        });
       })
     );
 
@@ -153,17 +172,17 @@ function WorkspaceContent() {
         const { taskId, tool, result } = event.payload;
         console.log('[Workspace] Action completed:', tool);
         setMessages((current) => {
-          const filtered = current.filter(m => m.id !== `action-${taskId}-${tool}`);
+          const activeMsgId = `task-run-${taskId}`;
           const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-          return [
-            ...filtered,
-            {
-              id: `action-result-${taskId}-${tool}`,
-              role: 'assistant',
-              content: `Completed ${tool}`,
-              meta: resultStr.length > 100 ? resultStr.substring(0, 100) + '...' : resultStr
+          return current.map((m) => {
+            if (m.id === activeMsgId && m.toolCalls) {
+              const updatedCalls = m.toolCalls.map((tc) =>
+                tc.tool_name === tool ? { ...tc, output: resultStr } : tc
+              );
+              return { ...m, toolCalls: updatedCalls };
             }
-          ];
+            return m;
+          });
         });
       })
     );
@@ -174,16 +193,16 @@ function WorkspaceContent() {
         const { taskId, tool, error } = event.payload;
         console.error('[Workspace] Action failed:', tool, error);
         setMessages((current) => {
-          const filtered = current.filter(m => m.id !== `action-${taskId}-${tool}`);
-          return [
-            ...filtered,
-            {
-              id: `action-error-${taskId}-${tool}`,
-              role: 'assistant',
-              content: `Failed to execute ${tool}: ${error}`,
-              meta: 'Error'
+          const activeMsgId = `task-run-${taskId}`;
+          return current.map((m) => {
+            if (m.id === activeMsgId && m.toolCalls) {
+              const updatedCalls = m.toolCalls.map((tc) =>
+                tc.tool_name === tool ? { ...tc, output: `Error: ${error}` } : tc
+              );
+              return { ...m, toolCalls: updatedCalls };
             }
-          ];
+            return m;
+          });
         });
       })
     );
@@ -194,22 +213,26 @@ function WorkspaceContent() {
         const { taskId, result } = event.payload;
         console.log('[Workspace] Task completed:', taskId);
         setMessages((current) => {
-          const filtered = current.filter(m => 
-            !m.id.startsWith(`thinking-${taskId}`) && 
-            !m.id.startsWith(`action-${taskId}`) &&
-            !m.id.startsWith(`action-result-${taskId}`)
-          );
-          
-          const resultText = result?.plan?.reasoning || 'Task completed successfully';
-          return [
-            ...filtered,
-            {
-              id: `task-complete-${taskId}`,
-              role: 'assistant',
-              content: resultText,
-              meta: `${result?.actions?.length || 0} actions executed`
-            }
-          ];
+          const activeMsgId = `task-run-${taskId}`;
+          const resultText = result?.plan?.reasoning || result?.output || 'Task completed successfully';
+          const existing = current.find((m) => m.id === activeMsgId);
+
+          if (existing) {
+            return current.map((m) =>
+              m.id === activeMsgId
+                ? { ...m, content: resultText }
+                : m
+            );
+          } else {
+            return [
+              ...current,
+              {
+                id: `task-complete-${taskId}`,
+                role: 'assistant',
+                content: resultText,
+              },
+            ];
+          }
         });
         setIsWorking(false);
       })

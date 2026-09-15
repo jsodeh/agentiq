@@ -1,6 +1,7 @@
 pub mod knowledge;
 pub mod memory;
 pub mod models;
+pub mod profiles;
 pub mod queries;
 pub mod schema;
 
