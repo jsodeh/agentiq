@@ -84,10 +84,10 @@ export function CustomSkillModal({ isOpen, onClose, onCreated }: CustomSkillModa
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#14141c] text-white shadow-2xl"
+          className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#181818] text-white shadow-2xl"
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/10 bg-[#191924] px-6 py-4">
+          <div className="flex items-center justify-between border-b border-white/10 bg-[#282828] px-6 py-4">
             <div className="flex items-center gap-3">
               <div className="grid size-9 place-items-center rounded-xl bg-accent/20 text-accent">
                 <Sparkles className="size-5" />
@@ -134,7 +134,7 @@ export function CustomSkillModal({ isOpen, onClose, onCreated }: CustomSkillModa
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-[#1a1a24] px-3 py-2 text-xs text-white outline-none focus:border-accent"
+                  className="w-full rounded-lg border border-white/10 bg-[#282828] px-3 py-2 text-xs text-white outline-none focus:border-accent"
                 >
                   <option value="marketing">Marketing & Growth</option>
                   <option value="content">Content & Social Media</option>
@@ -188,7 +188,7 @@ export function CustomSkillModal({ isOpen, onClose, onCreated }: CustomSkillModa
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between border-t border-white/10 bg-[#191924] px-6 py-4">
+          <div className="flex items-center justify-between border-t border-white/10 bg-[#282828] px-6 py-4">
             <p className="text-[11px] text-gray-400">
               Saved instantly to your local plugin registry without restarting.
             </p>

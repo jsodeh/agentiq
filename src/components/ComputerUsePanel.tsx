@@ -240,7 +240,7 @@ export const ComputerUsePanel: React.FC<ComputerUsePanelProps> = ({ agentId }) =
                 <p className="text-gray-400 mb-4">No active session</p>
                 <button
                   onClick={() => setIsLiveSessionActive(true)}
-                  className="px-6 py-3 bg-brand text-white rounded-lg hover:bg-purple-600 transition-colors"
+                  className="px-6 py-3 bg-brand text-white rounded-lg hover:bg-[#006666] transition-colors"
                 >
                   Start Session
                 </button>

@@ -365,7 +365,7 @@ export default function ModeSelect() {
 
           {/* Free Mode */}
           <motion.button
-            whileHover={{ scale: 1.015, borderColor: '#6C3BFF' }}
+            whileHover={{ scale: 1.015, borderColor: '#008080' }}
             whileTap={{ scale: 0.985 }}
             onClick={handleFreeMode}
             className="relative bg-dark border border-midGray/60 rounded-2xl p-6 text-left transition-all hover:shadow-lg hover:shadow-brand/10 group"
@@ -451,7 +451,7 @@ export default function ModeSelect() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.92, opacity: 0, y: 20 }}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
-              className="bg-[#13131a] border border-midGray/50 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl"
+              className="bg-[#181818] border border-midGray/50 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl"
             >
               {/* Modal header */}
               <div className="px-6 pt-6 pb-4 border-b border-midGray/30">
@@ -564,7 +564,7 @@ export default function ModeSelect() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.92, opacity: 0, y: 20 }}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
-              className="bg-[#13131a] border border-midGray/50 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl"
+              className="bg-[#181818] border border-midGray/50 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl"
             >
               {/* Header */}
               <div className="px-6 pt-6 pb-4 border-b border-midGray/30">

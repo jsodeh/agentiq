@@ -38,8 +38,8 @@ export function WorkspaceHeaderPanel({
     'grid size-8 place-items-center rounded-xl border transition-colors ' +
     'border-black/10 bg-black/[0.04] text-gray-600 ' +
     'hover:border-brand/40 hover:bg-black/[0.08] hover:text-[#0a0a0f] ' +
-    'dark:border-white/10 dark:bg-[#161620] dark:text-gray-300 ' +
-    'dark:hover:border-brand/40 dark:hover:bg-[#1d1d2b] dark:hover:text-white';
+    'dark:border-white/10 dark:bg-[#181818] dark:text-gray-300 ' +
+    'dark:hover:border-brand/40 dark:hover:bg-[#282828] dark:hover:text-white';
 
   return (
     <div className="flex items-center gap-2">
@@ -52,8 +52,8 @@ export function WorkspaceHeaderPanel({
           'flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition-colors ' +
           'border-black/10 bg-black/[0.04] text-gray-700 ' +
           'hover:border-brand/40 hover:bg-black/[0.08] hover:text-[#0a0a0f] ' +
-          'dark:border-white/10 dark:bg-[#161620] dark:text-gray-200 ' +
-          'dark:hover:border-brand/40 dark:hover:bg-[#1d1d2b] dark:hover:text-white'
+          'dark:border-white/10 dark:bg-[#181818] dark:text-gray-200 ' +
+          'dark:hover:border-brand/40 dark:hover:bg-[#282828] dark:hover:text-white'
         }
       >
         <span className="grid size-5 place-items-center rounded bg-brand/20 text-[10px] font-bold text-brand">

@@ -187,7 +187,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="relative flex h-[82vh] w-full max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-[#12131e] text-white shadow-2xl"
+          className="relative flex h-[82vh] w-full max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-[#181818] text-white shadow-2xl"
         >
           {/* Close button */}
           <button
@@ -198,7 +198,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </button>
 
           {/* Left Navigation Sidebar */}
-          <aside className="w-60 border-r border-white/10 bg-[#0c0d16] p-4 flex flex-col justify-between">
+          <aside className="w-60 border-r border-white/10 bg-[#122224] p-4 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-2.5 px-2 py-3 mb-4">
                 <div className="grid size-8 place-items-center rounded-xl bg-brand/20 text-brand">

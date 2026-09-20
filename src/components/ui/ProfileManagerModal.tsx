@@ -78,13 +78,13 @@ export function ProfileManagerModal({ isOpen, onClose, onProfileSwitched }: Prof
   const activeProfile = profiles.find((p) => p.is_active) || profiles[0];
 
   // ── Shared style tokens ─────────────────────────────────────────────────
-  const modalBg   = 'bg-white dark:bg-[#121218]';
-  const headerBg  = 'bg-[#f5f5f7] dark:bg-[#181822]';
+  const modalBg   = 'bg-white dark:bg-[#181818]';
+  const headerBg  = 'bg-[#f5f5f7] dark:bg-[#282828]';
   const border    = 'border-black/10 dark:border-white/10';
   const textMain  = 'text-[#0a0a0f] dark:text-white';
   const textDim   = 'text-gray-500 dark:text-gray-400';
   const textXS    = 'text-gray-400 dark:text-gray-500';
-  const surfaceBg = 'bg-[#f0f0f5] dark:bg-[#161620]';
+  const surfaceBg = 'bg-[#f0f0f5] dark:bg-[#282828]';
 
   return (
     <AnimatePresence>
@@ -171,7 +171,7 @@ export function ProfileManagerModal({ isOpen, onClose, onProfileSwitched }: Prof
                             <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-300">PRO</span>
                           )}
                           {p.tier === 'agency' && (
-                            <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-bold text-purple-600 dark:text-purple-300">AGENCY</span>
+                            <span className="rounded bg-[#008080]/20 px-1.5 py-0.5 text-[9px] font-bold text-[#006666] dark:text-[#00a8a8]">AGENCY</span>
                           )}
                         </h4>
                         <p className={`text-[10px] ${textDim}`}>{p.max_accounts_per_platform} account/platform limit</p>
@@ -212,7 +212,7 @@ export function ProfileManagerModal({ isOpen, onClose, onProfileSwitched }: Prof
                             selectedTier === t
                               ? t === 'base'   ? 'border-brand bg-brand/20 font-bold text-brand'
                               : t === 'pro'    ? 'border-amber-400 bg-amber-400/20 font-bold text-amber-600 dark:text-amber-300'
-                              :                  'border-purple-400 bg-purple-400/20 font-bold text-purple-600 dark:text-purple-300'
+                              :                  'border-[#008080] bg-[#008080]/20 font-bold text-[#006666] dark:text-[#00a8a8]'
                               : `${border} bg-black/[0.03] dark:bg-white/5 ${textDim}`
                           }`}
                         >

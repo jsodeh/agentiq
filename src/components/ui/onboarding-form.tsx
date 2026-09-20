@@ -160,10 +160,10 @@ export function OnboardingForm({
       initial={{ opacity: 0, scale: 0.96, y: 16 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96, y: 16 }}
-      className="w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#13131a] shadow-2xl shadow-black/50"
+      className="w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#181818] shadow-2xl shadow-black/50"
     >
       {/* Banner */}
-      <div className="relative h-28 overflow-hidden bg-gradient-to-br from-brand via-[#885cff] to-accent">
+      <div className="relative h-28 overflow-hidden bg-gradient-to-br from-brand via-[#00a8a8] to-accent">
         <div className="absolute -right-8 -top-10 size-40 rounded-full bg-white/15 blur-2xl" />
         <div className="absolute bottom-4 left-6 flex items-center gap-2 text-sm font-semibold text-white">
           <Sparkles className="size-4" /> Your agēntīq workspace

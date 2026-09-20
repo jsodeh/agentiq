@@ -128,10 +128,10 @@ export function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps)
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="relative z-10 flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#14141c] text-white shadow-2xl"
+          className="relative z-10 flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#181818] text-white shadow-2xl"
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 bg-[#191924]">
+          <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 bg-[#282828]">
             <div className="flex items-center gap-3">
               <div className="grid size-9 place-items-center rounded-xl bg-brand/20 text-brand">
                 <Database className="size-5" />
@@ -162,7 +162,7 @@ export function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps)
           {/* Main Body */}
           <div className="flex flex-1 overflow-hidden">
             {/* Left Sidebar List */}
-            <div className="flex w-1/3 flex-col border-r border-white/10 bg-[#111118] p-4">
+            <div className="flex w-1/3 flex-col border-r border-white/10 bg-[#181818] p-4">
               <div className="mb-3 flex items-center gap-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-2.5 size-3.5 text-gray-400" />
@@ -217,7 +217,7 @@ export function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps)
             </div>
 
             {/* Right Pane: Form or Detailed View */}
-            <div className="flex flex-1 flex-col p-6 overflow-y-auto bg-[#14141c]">
+            <div className="flex flex-1 flex-col p-6 overflow-y-auto bg-[#181818]">
               {isAdding ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b border-white/10 pb-3">
@@ -246,7 +246,7 @@ export function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps)
                       <select
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
-                        className="w-full rounded-lg border border-white/10 bg-[#1a1a24] px-3 py-2 text-xs text-white outline-none focus:border-brand"
+                        className="w-full rounded-lg border border-white/10 bg-[#282828] px-3 py-2 text-xs text-white outline-none focus:border-brand"
                       >
                         <option value="brand_guidelines">Brand Guidelines</option>
                         <option value="product_catalog">Product Catalog / Specs</option>

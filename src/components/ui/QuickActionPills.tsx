@@ -26,7 +26,7 @@ const QUICK_ACTIONS: QuickActionItem[] = [
     label: 'Manage Instagram',
     prompt: 'Create a 7-day Instagram content strategy with carousel ideas, post captions, and reel hook scripts for my brand.',
     icon: Camera,
-    color: 'text-pink-400 bg-pink-500/10 border-pink-500/20 hover:border-pink-500/50',
+    color: 'text-[#00a8a8] bg-[#008080]/10 border-[#008080]/20 hover:border-[#008080]/50',
   },
   {
     id: 'twitter',
@@ -61,7 +61,7 @@ const QUICK_ACTIONS: QuickActionItem[] = [
     label: 'Competitor Audit',
     prompt: 'Perform a competitive analysis comparing our product offerings, pricing tiers, and positioning against top 3 competitors.',
     icon: Search,
-    color: 'text-purple-400 bg-purple-500/10 border-purple-500/20 hover:border-purple-500/50',
+    color: 'text-[#00a8a8] bg-[#008080]/10 border-[#008080]/20 hover:border-[#008080]/50',
   },
   {
     id: 'outreach',

@@ -24,7 +24,7 @@ export function ChatLayout({
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
               <Sparkles className="h-5 w-5 text-primary" />
-              <span className="font-bold text-lg bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+              <span className="font-bold text-lg bg-gradient-to-r from-primary to-[#00a8a8] bg-clip-text text-transparent">
                 agēntīq
               </span>
             </div>

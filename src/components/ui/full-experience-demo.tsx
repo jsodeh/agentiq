@@ -31,7 +31,7 @@ const suggestions: SuggestionCard[] = [
     title: "Catch up on emails",
     description: "Summarize unread emails and draft replies",
     prompt: "Catch me up on my emails and help me respond",
-    color: "from-purple-500 to-pink-500",
+    color: "from-[#008080] to-[#00a8a8]",
   },
   {
     id: '3',
@@ -672,7 +672,7 @@ The timing works well for everyone - morning slot with no conflicts. All attende
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-2">
                   <Sparkles className="w-8 h-8 text-primary" />
                 </div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-purple-400 to-pink-500 bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-[#00a8a8] to-[#004d4d] bg-clip-text text-transparent">
                   Welcome to agentiq
                 </h1>
                 <p className="text-muted-foreground text-sm">

@@ -8,37 +8,49 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: '#6C3BFF',
-        accent: '#00D4AA',
-        dark: '#0D0D1A',
-        midGray: '#4A4A6A',
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
+        /* ── Brand tokens ─────────────────────────────────────────────── */
+        brand: {
+          DEFAULT: "#008080",          /* Darker brand color #008080 */
+          dark:    "#122224",          /* Darker brand dark #122224 */
+          bright:  "#00a8a8",          /* Brighter brand color #00a8a8 */
+          light:   "#e0f4f4",          /* Light brand tint */
+        },
+        accent: {
+          DEFAULT: "#00a8a8",          /* Brighter brand color #00a8a8 */
+          hover:   "#008080",
+        },
+        dark:      "#181818",          /* Dark mode background #181818 */
+        surface:   "#282828",          /* Dark mode surface / input #282828 */
+        midGray:   "#a0a0a8",
+
+        /* ── shadcn-compatible semantic tokens ─────────────────────────── */
+        border:     "hsl(var(--border))",
+        input:      "hsl(var(--input))",
+        ring:       "#008080",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT:    "#008080",
+          foreground: "#ffffff",
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
+          DEFAULT:    "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
+          DEFAULT:    "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
+          DEFAULT:    "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
+          DEFAULT:    "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
+          DEFAULT:    "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
         },
       },

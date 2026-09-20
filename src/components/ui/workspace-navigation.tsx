@@ -46,7 +46,7 @@ export function WorkspaceSidebar({
       className={
         'fixed inset-y-0 left-0 z-40 hidden md:flex md:flex-col ' +
         'border-r border-black/[0.08] bg-[#f5f5f7]/95 backdrop-blur-xl ' +
-        'dark:border-white/[0.08] dark:bg-[#121217]/95'
+        'dark:border-white/[0.08] dark:bg-[#181818]/95'
       }
     >
       {/* Logo row */}
@@ -178,7 +178,7 @@ export function WorkspaceBottomMenu({
       className={
         'fixed bottom-5 right-5 z-30 hidden rounded-full p-1 shadow-2xl backdrop-blur-xl sm:block ' +
         'border border-black/[0.1] bg-white/90 shadow-black/10 ' +
-        'dark:border-white/[0.1] dark:bg-[#1a1a20]/95 dark:shadow-black/40'
+        'dark:border-white/[0.1] dark:bg-[#282828]/95 dark:shadow-black/40'
       }
     >
       <div className="relative flex h-9 items-center gap-1">
@@ -235,7 +235,7 @@ export function WorkspaceBottomMenu({
               className={
                 'pointer-events-none absolute bottom-full right-0 mb-2 whitespace-nowrap rounded-md px-2 py-1 text-[11px] shadow-lg ' +
                 'border border-black/10 bg-white text-[#0a0a0f] ' +
-                'dark:border-white/10 dark:bg-[#222229] dark:text-white'
+                'dark:border-white/10 dark:bg-[#282828] dark:text-white'
               }
             >
               {hovered}

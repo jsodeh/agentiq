@@ -67,8 +67,8 @@ export function TeamModal({ isOpen, profileId, onClose }: TeamModalProps) {
   if (!isOpen) return null;
 
   // ── Shared style tokens ─────────────────────────────────────────────────
-  const modalBg  = 'bg-white dark:bg-[#121218]';
-  const headerBg = 'bg-[#f5f5f7] dark:bg-[#181822]';
+  const modalBg  = 'bg-white dark:bg-[#181818]';
+  const headerBg = 'bg-[#f5f5f7] dark:bg-[#282828]';
   const border   = 'border-black/10 dark:border-white/10';
   const textMain = 'text-[#0a0a0f] dark:text-white';
   const textDim  = 'text-gray-500 dark:text-gray-400';
@@ -137,7 +137,7 @@ export function TeamModal({ isOpen, profileId, onClose }: TeamModalProps) {
 
             {/* Invite form */}
             {isAdding && (
-              <div className={`rounded-xl border p-4 space-y-3 ${border} bg-[#f0f0f5] dark:bg-[#171722]`}>
+              <div className={`rounded-xl border p-4 space-y-3 ${border} bg-[#f0f0f5] dark:bg-[#282828]`}>
                 <h4 className={`text-xs font-bold ${textMain}`}>Invite New Team Member</h4>
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -161,7 +161,7 @@ export function TeamModal({ isOpen, profileId, onClose }: TeamModalProps) {
                     <select
                       value={role}
                       onChange={(e) => setRole(e.target.value as 'admin' | 'member' | 'viewer')}
-                      className={`rounded-lg border px-2 py-1 text-xs outline-none focus:border-brand ${border} bg-white dark:bg-[#1a1a24] ${textMain}`}
+                      className={`rounded-lg border px-2 py-1 text-xs outline-none focus:border-brand ${border} bg-white dark:bg-[#282828] ${textMain}`}
                     >
                       <option value="admin">Admin</option>
                       <option value="member">Member</option>

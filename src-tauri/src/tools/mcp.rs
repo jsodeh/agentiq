@@ -38,7 +38,7 @@ impl ToolExecutor for McpTool {
         let clean_name = tool_name.strip_prefix("mcp_").unwrap_or(tool_name);
 
         match clean_name {
-            "web_search" | "google_search" | "exa_search" => {
+            "web_search" | "google_search" | "exa_search" | "google_maps_search" => {
                 let query = params["query"]
                     .as_str()
                     .or_else(|| params["q"].as_str())
@@ -115,7 +115,7 @@ impl ToolExecutor for McpTool {
                 "results": [],
                 "summary": "No internal documents matched the query"
             })),
-            "google_maps_search" | "composio" | "send_email" => Ok(json!({
+            "composio" | "send_email" => Ok(json!({
                 "status": "executed",
                 "tool": clean_name,
                 "result": format!("MCP Tool execution completed for {}", clean_name),

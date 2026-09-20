@@ -87,11 +87,11 @@ export function InboxDrawerModal({ isOpen, profileId, onClose, onUpdateUnread }:
           className={
             'relative z-10 flex h-full w-full max-w-md flex-col shadow-2xl ' +
             'border-l border-black/10 bg-white text-[#0a0a0f] ' +
-            'dark:border-white/10 dark:bg-[#121217] dark:text-white'
+            'dark:border-white/10 dark:bg-[#181818] dark:text-white'
           }
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-black/10 bg-[#f5f5f7] px-5 py-4 dark:border-white/10 dark:bg-[#181820]">
+          <div className="flex items-center justify-between border-b border-black/10 bg-[#f5f5f7] px-5 py-4 dark:border-white/10 dark:bg-[#282828]">
             <div className="flex items-center gap-2.5">
               <div className="grid size-8 place-items-center rounded-lg bg-brand/20 text-brand">
                 <Inbox className="size-4" />

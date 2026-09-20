@@ -1,0 +1,86 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   agēntīq – Design Token Sheet
+   Single source of truth for all colour, surface and semantic CSS variables.
+   Both index.css and tailwind.config.js consume from here.
+
+   Palette:
+     Brand Dark    #122224   hsl(180 30% 11%)
+     Brand Primary #008080   hsl(180 100% 25%)
+     Brand Bright  #00a8a8   hsl(180 100% 33%)
+     Dark BG       #181818   hsl(0   0%   9%)
+     Light BG      #ffffff   hsl(0   0%   100%)
+     Dark Surface  #282828   hsl(0   0%   16%)
+     Light Surface #f5f5f7   hsl(240 5%   96%)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@layer base {
+  /* ── Light mode (default) ───────────────────────────────────────────────── */
+  :root {
+    /* ── Raw palette primitives ── */
+    --color-brand-dark:    180 30%  11%;   /* #122224 */
+    --color-brand:         180 100% 25%;   /* #008080 */
+    --color-brand-bright:  180 100% 33%;   /* #00a8a8 */
+
+    /* ── Backgrounds ── */
+    --background:          0   0%   100%;  /* #ffffff */
+    --surface:             240 5%   96%;   /* #f5f5f7 */
+    --input-bg:            240 5%   96%;   /* #f5f5f7 */
+
+    /* ── Foreground / text ── */
+    --foreground:          180 30%  10%;
+    --muted-foreground:    180 10%  45%;
+
+    /* ── Semantic aliases ── */
+    --card:                0   0%   100%;
+    --card-foreground:     180 30%  10%;
+    --popover:             0   0%   100%;
+    --popover-foreground:  180 30%  10%;
+    --primary:             180 100% 25%;   /* #008080 */
+    --primary-foreground:  0   0%   100%;
+    --brand:               180 100% 25%;   /* #008080 */
+    --brand-foreground:    0   0%   100%;
+    --secondary:           240 5%   96%;
+    --secondary-foreground: 180 30% 10%;
+    --muted:               240 5%   96%;
+    --accent:              180 100% 33%;   /* #00a8a8 */
+    --accent-foreground:   0   0%   100%;
+    --destructive:         0   84%  60%;
+    --destructive-foreground: 0 0%  98%;
+    --border:              180 15%  88%;
+    --input:               240 5%   96%;
+    --ring:                180 100% 25%;   /* #008080 */
+    --radius:              0.5rem;
+  }
+
+  /* ── Dark mode ──────────────────────────────────────────────────────────── */
+  .dark {
+    /* ── Backgrounds ── */
+    --background:          0   0%   9%;    /* #181818 */
+    --surface:             0   0%   16%;   /* #282828 */
+    --input-bg:            0   0%   16%;   /* #282828 */
+
+    /* ── Foreground / text ── */
+    --foreground:          0   0%   96%;
+    --muted-foreground:    180 8%   60%;
+
+    /* ── Semantic aliases ── */
+    --card:                0   0%   16%;   /* #282828 */
+    --card-foreground:     0   0%   96%;
+    --popover:             0   0%   16%;
+    --popover-foreground:  0   0%   96%;
+    --primary:             180 100% 25%;   /* #008080 */
+    --primary-foreground:  0   0%   100%;
+    --brand:               180 100% 25%;   /* #008080 */
+    --brand-foreground:    0   0%   100%;
+    --secondary:           0   0%   16%;
+    --secondary-foreground: 0  0%   96%;
+    --muted:               0   0%   16%;
+    --accent:              180 100% 33%;   /* #00a8a8 */
+    --accent-foreground:   0   0%   100%;
+    --destructive:         0   63%  31%;
+    --destructive-foreground: 0 0%  98%;
+    --border:              0   0%   22%;
+    --input:               0   0%   16%;
+    --ring:                180 100% 25%;   /* #008080 */
+  }
+}

@@ -96,7 +96,7 @@ export class InvoiceGenerator {
   private generateHeader(doc: any, data: InvoiceData) {
     doc
       .fontSize(20)
-      .fillColor('#6C3BFF')
+      .fillColor('#008080')
       .text('agēntīq', 50, 50)
       .fontSize(10)
       .fillColor('#000000')
@@ -112,7 +112,7 @@ export class InvoiceGenerator {
     // Invoice title
     doc
       .fontSize(24)
-      .fillColor('#6C3BFF')
+      .fillColor('#008080')
       .text('INVOICE', 400, 50, { align: 'right' });
   }
 
@@ -148,7 +148,7 @@ export class InvoiceGenerator {
 
     doc
       .fontSize(12)
-      .fillColor('#6C3BFF')
+      .fillColor('#008080')
       .text('BILL TO:', 50, y)
       .fontSize(10)
       .fillColor('#000000')
@@ -175,7 +175,7 @@ export class InvoiceGenerator {
     // Table header
     doc
       .fontSize(10)
-      .fillColor('#6C3BFF')
+      .fillColor('#008080')
       .text('DESCRIPTION', descriptionX, tableTop)
       .text('QTY', quantityX, tableTop)
       .text('PRICE', priceX, tableTop)
@@ -228,7 +228,7 @@ export class InvoiceGenerator {
     // Total
     doc
       .fontSize(12)
-      .fillColor('#6C3BFF')
+      .fillColor('#008080')
       .text('TOTAL:', 400, y + 45)
       .text(formatPrice(data.total), 490, y + 45);
   }

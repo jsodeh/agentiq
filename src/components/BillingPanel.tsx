@@ -216,7 +216,7 @@ export const BillingPanel: React.FC<BillingPanelProps> = ({ userId }) => {
                 <button
                   onClick={() => handleUpgrade(planOption.id)}
                   disabled={selectedPlan === planOption.id}
-                  className="w-full px-4 py-2 bg-brand text-white rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50"
+                  className="w-full px-4 py-2 bg-brand text-white rounded-lg hover:bg-[#006666] transition-colors disabled:opacity-50"
                 >
                   {selectedPlan === planOption.id ? 'Processing...' : 'Upgrade'}
                 </button>
@@ -289,7 +289,7 @@ export const BillingPanel: React.FC<BillingPanelProps> = ({ userId }) => {
                     <td className="px-6 py-4 text-sm text-right">
                       <button
                         onClick={() => handleDownloadInvoice(invoice.id)}
-                        className="text-brand hover:text-purple-400 transition-colors"
+                        className="text-brand hover:text-[#00a8a8] transition-colors"
                       >
                         Download PDF
                       </button>

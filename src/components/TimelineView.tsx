@@ -276,7 +276,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
           </button>
           <button
             onClick={exportToPDF}
-            className="px-4 py-2 bg-brand text-white rounded-lg hover:bg-purple-600 transition-colors"
+            className="px-4 py-2 bg-brand text-white rounded-lg hover:bg-[#006666] transition-colors"
           >
             Export PDF
           </button>

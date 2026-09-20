@@ -119,7 +119,7 @@ export function BoltStyleChat({
 
       {/* ── Header ── */}
       <header
-        className={`${hasMessages ? 'relative' : 'absolute inset-x-0 top-0'} z-10 flex items-center justify-between border-b border-black/[0.08] bg-[#f5f5f7] px-5 py-3 transition-[margin] sm:px-8 ${sidebarOffset} dark:border-white/[0.08] dark:bg-[#0d0d12]`}
+        className={`${hasMessages ? 'relative' : 'absolute inset-x-0 top-0'} z-10 flex items-center justify-between border-b border-black/[0.08] bg-[#f5f5f7] px-5 py-3 transition-[margin] sm:px-8 ${sidebarOffset} dark:border-white/[0.08] dark:bg-[#181818]`}
       >
         <span className="rounded-full border border-black/10 bg-black/[0.04] px-3 py-1 text-[11px] font-semibold text-[#6b6b78] dark:border-white/10 dark:bg-white/[0.04] dark:text-[#a0a0a8]">
           AgentIQ Autonomous OS
@@ -256,7 +256,7 @@ export function BoltStyleChat({
             </h1>
 
             {/* Input box */}
-            <div className="mt-1 w-full rounded-2xl border border-black/10 bg-[#f5f5f7] shadow-lg dark:border-white/10 dark:bg-[#121217] dark:shadow-2xl">
+            <div className="mt-1 w-full rounded-2xl border border-black/10 bg-[#f5f5f7] shadow-lg dark:border-white/10 dark:bg-[#282828] dark:shadow-2xl">
               <textarea
                 ref={textarea}
                 value={input}
@@ -285,7 +285,7 @@ export function BoltStyleChat({
                       <ChevronDown className="size-3" />
                     </button>
                     {modelOpen && (
-                      <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-black/10 bg-white p-1.5 shadow-xl z-30 dark:border-white/10 dark:bg-[#1c1c24] dark:shadow-2xl">
+                      <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-black/10 bg-white p-1.5 shadow-xl z-30 dark:border-white/10 dark:bg-[#282828] dark:shadow-2xl">
                         {models.map((item) => {
                           const Icon = item.icon;
                           return (
@@ -337,13 +337,13 @@ export function BoltStyleChat({
                 <motion.div
                   role="status"
                   initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-                  className="mb-2 w-fit rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs text-gray-600 shadow-lg dark:border-white/10 dark:bg-[#1c1c24] dark:text-gray-300 dark:shadow-xl"
+                  className="mb-2 w-fit rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs text-gray-600 shadow-lg dark:border-white/10 dark:bg-[#282828] dark:text-gray-300 dark:shadow-xl"
                 >
                   {notice}
                 </motion.div>
               )}
             </AnimatePresence>
-            <div className="rounded-2xl border border-black/10 bg-[#f5f5f7] shadow-lg dark:border-white/10 dark:bg-[#121217] dark:shadow-2xl">
+            <div className="rounded-2xl border border-black/10 bg-[#f5f5f7] shadow-lg dark:border-white/10 dark:bg-[#282828] dark:shadow-2xl">
               <textarea
                 ref={textarea}
                 value={input}
@@ -371,7 +371,7 @@ export function BoltStyleChat({
                       <ChevronDown className="size-3" />
                     </button>
                     {modelOpen && (
-                      <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-black/10 bg-white p-1.5 shadow-xl z-30 dark:border-white/10 dark:bg-[#1c1c24] dark:shadow-2xl">
+                      <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-black/10 bg-white p-1.5 shadow-xl z-30 dark:border-white/10 dark:bg-[#282828] dark:shadow-2xl">
                         {models.map((item) => {
                           const Icon = item.icon;
                           return (
