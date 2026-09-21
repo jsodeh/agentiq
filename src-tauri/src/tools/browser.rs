@@ -31,6 +31,22 @@ impl ToolExecutor for BrowserTool {
         )
     }
 
+    fn definitions(&self) -> Vec<crate::llm::ToolDefinition> {
+        vec![
+            crate::llm::ToolDefinition {
+                name: "browser_navigate".to_string(),
+                description: "Navigate browser to a URL and take a screenshot or extract page content.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "Target web URL to navigate to" }
+                    },
+                    "required": ["url"]
+                }),
+            },
+        ]
+    }
+
     async fn execute(&self, tool_name: &str, params: Value) -> Result<Value, AppError> {
         let url = params["url"].as_str().unwrap_or("https://example.com");
 

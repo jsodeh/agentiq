@@ -34,15 +34,30 @@ impl MasterOrchestrator {
             ));
         }
 
-        // 5. Execution Instructions
+        // 5. Response Instructions — always natural language
         prompt.push_str(
-            "INSTRUCTION FOR SYSTEM EXECUTION:\n\
-            Analyze the user's intent carefully.\n\
-            - If tools (web search, Google Maps search, browser scraping, filesystem, email, etc.) are needed to fulfill the request, output a structured JSON action plan in this format:\n\
-            {\"reasoning\": \"...\", \"expected_outcome\": \"...\", \"actions\": [{\"tool\": \"web_search\", \"params\": {\"query\": \"...\"}, \"description\": \"...\"}]}\n\
-            - If no tools are required, answer directly in natural, authoritative, and well-structured markdown text."
+            "RESPONSE INSTRUCTIONS:\n\
+            Always respond in clear, well-structured markdown. Never output raw JSON or code blocks as your final answer.\n\
+            When tool results are provided in the conversation as TOOL_RESULT or SEARCH_RESULTS, use them as grounding facts \
+            and synthesize a helpful, accurate, direct answer for the user."
         );
 
+        prompt
+    }
+
+    /// Build a synthesis prompt for after tool execution — instructs LLM to summarize results.
+    pub fn build_synthesis_system_prompt(
+        pool: &DbPool,
+        agent_registry: &Arc<AgentPluginRegistry>,
+    ) -> String {
+        let mut prompt = Self::build_hydrated_system_prompt(pool, agent_registry, "default");
+        prompt.push_str(
+            "\n\n---\n\nYou have just executed a live web search. \
+            The results are included in the conversation. \
+            Synthesize the search results into a concise, well-formatted markdown response. \
+            Include key names, addresses, and relevant details where available. \
+            Do not make up information not present in the results."
+        );
         prompt
     }
 }

@@ -5,6 +5,7 @@ pub mod executor;
 pub mod master;
 pub mod parser;
 pub mod queue;
+pub mod react_engine;
 
 use parking_lot::Mutex;
 use std::sync::Arc;

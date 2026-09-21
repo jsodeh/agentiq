@@ -65,6 +65,22 @@ impl LlmClient for GeminiClient {
             });
         }
 
+        if let Some(tools) = &request.tools {
+            let decls: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters
+                    })
+                })
+                .collect();
+            body["tools"] = json!([{
+                "functionDeclarations": decls
+            }]);
+        }
+
         // Only ya29. tokens are OAuth tokens; AQ. and AIza. are AI Studio API Keys
         let is_oauth = self.api_key.starts_with("ya29.");
 
@@ -111,12 +127,22 @@ impl LlmClient for GeminiClient {
         let duration = start.elapsed().as_millis() as u64;
 
         let mut text_content = String::new();
+        let mut tool_calls = Vec::new();
         if let Some(candidates) = res_json["candidates"].as_array() {
             if let Some(first) = candidates.first() {
                 if let Some(parts) = first["content"]["parts"].as_array() {
-                    for part in parts {
+                    for (idx, part) in parts.iter().enumerate() {
                         if let Some(t) = part["text"].as_str() {
                             text_content.push_str(t);
+                        }
+                        if let Some(fc) = part.get("functionCall") {
+                            let name = fc["name"].as_str().unwrap_or("").to_string();
+                            let args = fc["args"].clone();
+                            tool_calls.push(super::ToolCall {
+                                id: format!("gemini_call_{}", idx),
+                                name,
+                                arguments: args,
+                            });
                         }
                     }
                 }
@@ -133,12 +159,18 @@ impl LlmClient for GeminiClient {
             total_tokens: if total_tokens > 0 { total_tokens } else { prompt_tokens + completion_tokens },
         };
 
+        let finish_reason = if !tool_calls.is_empty() {
+            FinishReason::ToolCalls
+        } else {
+            FinishReason::Stop
+        };
+
         Ok(LlmResponse {
             content: text_content,
             model,
             tokens_used: usage,
-            finish_reason: FinishReason::Stop,
-            tool_calls: Vec::new(),
+            finish_reason,
+            tool_calls,
             response_time_ms: duration,
         })
     }

@@ -32,6 +32,45 @@ impl ToolExecutor for FilesystemTool {
         )
     }
 
+    fn definitions(&self) -> Vec<crate::llm::ToolDefinition> {
+        vec![
+            crate::llm::ToolDefinition {
+                name: "read_file".to_string(),
+                description: "Read the full text content of a file at the specified path.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Absolute or relative file path to read" }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            crate::llm::ToolDefinition {
+                name: "write_file".to_string(),
+                description: "Write content to a file at the specified path (creates parent directories if needed).".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Target file path" },
+                        "content": { "type": "string", "description": "Content to write to the file" }
+                    },
+                    "required": ["path", "content"]
+                }),
+            },
+            crate::llm::ToolDefinition {
+                name: "list_directory".to_string(),
+                description: "List directory contents including filenames and subdirectories.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Directory path to inspect" }
+                    },
+                    "required": ["path"]
+                }),
+            },
+        ]
+    }
+
     async fn execute(&self, tool_name: &str, params: Value) -> Result<Value, AppError> {
         match tool_name {
             "read_file" => {

@@ -31,7 +31,61 @@ impl ToolExecutor for McpTool {
                     | "rag_search_docs"
                     | "google_maps_search"
                     | "send_email"
+                    | "create_calendar_event"
             )
+    }
+
+    fn definitions(&self) -> Vec<crate::llm::ToolDefinition> {
+        vec![
+            crate::llm::ToolDefinition {
+                name: "web_search".to_string(),
+                description: "Search the live web for real-time information, places, businesses, news, or current facts.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Search query keywords or phrase" }
+                    },
+                    "required": ["query"]
+                }),
+            },
+            crate::llm::ToolDefinition {
+                name: "browser_open_url".to_string(),
+                description: "Fetch web content from a specific URL.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "URL to fetch content from" }
+                    },
+                    "required": ["url"]
+                }),
+            },
+            crate::llm::ToolDefinition {
+                name: "send_email".to_string(),
+                description: "Send an email message to a specified recipient.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "to": { "type": "string", "description": "Recipient email address" },
+                        "subject": { "type": "string", "description": "Email subject line" },
+                        "body": { "type": "string", "description": "Body content of the email" }
+                    },
+                    "required": ["to", "subject", "body"]
+                }),
+            },
+            crate::llm::ToolDefinition {
+                name: "create_calendar_event".to_string(),
+                description: "Schedule an event or reminder on the user's calendar.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string", "description": "Title/description of the event or reminder" },
+                        "start_time": { "type": "string", "description": "Event start time (e.g. 12:00 PM today or ISO date string)" },
+                        "notes": { "type": "string", "description": "Optional notes or details" }
+                    },
+                    "required": ["title", "start_time"]
+                }),
+            },
+        ]
     }
 
     async fn execute(&self, tool_name: &str, params: Value) -> Result<Value, AppError> {
@@ -115,10 +169,10 @@ impl ToolExecutor for McpTool {
                 "results": [],
                 "summary": "No internal documents matched the query"
             })),
-            "composio" | "send_email" => Ok(json!({
+            "composio" | "send_email" | "create_calendar_event" => Ok(json!({
                 "status": "executed",
                 "tool": clean_name,
-                "result": format!("MCP Tool execution completed for {}", clean_name),
+                "result": format!("Tool execution completed for {}", clean_name),
                 "params": params
             })),
             _ => Ok(json!({

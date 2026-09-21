@@ -93,40 +93,14 @@ function WorkspaceContent() {
   useEffect(() => {
     const unlistenPromises: Promise<UnlistenFn>[] = [];
 
-    // Listen for task started
-    unlistenPromises.push(
-      listen<AgentEvent>('task_started', (event) => {
-        const { taskId, description } = event.payload;
-        console.log('[Workspace] Task started:', taskId);
-        setMessages((current) => [
-          ...current,
-          {
-            id: `task-start-${taskId}`,
-            role: 'assistant',
-            content: `Starting task...`,
-            meta: 'Initializing'
-          }
-        ]);
-      })
-    );
-
     // Listen for agent thinking
     unlistenPromises.push(
       listen<AgentEvent>('agent_thinking', (event) => {
-        const { taskId, reasoning, expectedOutcome } = event.payload;
+        const { reasoning } = event.payload;
         console.log('[Workspace] Agent thinking:', reasoning);
-        setMessages((current) => {
-          const filtered = current.filter(m => m.id !== `task-start-${taskId}`);
-          return [
-            ...filtered,
-            {
-              id: `thinking-${taskId}`,
-              role: 'assistant',
-              content: reasoning || 'Analyzing your request...',
-              meta: expectedOutcome ? `Expected: ${expectedOutcome}` : undefined
-            }
-          ];
-        });
+        if (reasoning) {
+          setWorkingText(reasoning);
+        }
       })
     );
 
@@ -135,6 +109,8 @@ function WorkspaceContent() {
       listen<AgentEvent>('action_started', (event) => {
         const { taskId, tool, description, params } = event.payload;
         console.log('[Workspace] Action started:', tool);
+        setWorkingText(description || `Executing ${tool}…`);
+        
         setMessages((current) => {
           const activeMsgId = `task-run-${taskId}`;
           const existing = current.find((m) => m.id === activeMsgId);
@@ -157,7 +133,7 @@ function WorkspaceContent() {
               {
                 id: activeMsgId,
                 role: 'assistant',
-                content: `Executing workflow steps...`,
+                content: '',
                 toolCalls: [newToolCall],
               },
             ];
@@ -214,25 +190,17 @@ function WorkspaceContent() {
         console.log('[Workspace] Task completed:', taskId);
         setMessages((current) => {
           const activeMsgId = `task-run-${taskId}`;
-          const resultText = result?.plan?.reasoning || result?.output || 'Task completed successfully';
+          const resultText = result?.plan?.reasoning || result?.output || '';
           const existing = current.find((m) => m.id === activeMsgId);
 
-          if (existing) {
+          if (existing && resultText) {
             return current.map((m) =>
               m.id === activeMsgId
                 ? { ...m, content: resultText }
                 : m
             );
-          } else {
-            return [
-              ...current,
-              {
-                id: `task-complete-${taskId}`,
-                role: 'assistant',
-                content: resultText,
-              },
-            ];
           }
+          return current;
         });
         setIsWorking(false);
       })
@@ -270,7 +238,6 @@ function WorkspaceContent() {
     setWorkingText('Thinking…');
     setIsWorking(true);
 
-    // Route all messages via direct chat path (with enriched prompt for research/search)
     try {
       const userId = profile.id || 1;
 
@@ -292,14 +259,26 @@ function WorkspaceContent() {
         message: description,
       });
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: `reply-${response.message_id}`,
-          role: 'assistant',
-          content: response.content,
-        },
-      ]);
+      setMessages((current) => {
+        const activeMsgId = `task-run-${conversationId}`;
+        const existing = current.find((m) => m.id === activeMsgId);
+        if (existing) {
+          return current.map((m) =>
+            m.id === activeMsgId
+              ? { ...m, content: response.content }
+              : m
+          );
+        } else {
+          return [
+            ...current,
+            {
+              id: `reply-${response.message_id}`,
+              role: 'assistant',
+              content: response.content,
+            },
+          ];
+        }
+      });
     } catch (error) {
       console.error('[Workspace] Chat error:', error);
       setMessages((current) => [
