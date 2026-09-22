@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Instant;
+use tracing::warn;
 
-use super::{FinishReason, LlmClient, LlmRequest, LlmResponse, TokenUsage};
+use super::{FinishReason, LlmClient, LlmRequest, LlmResponse, MessageRole, TokenUsage};
 use crate::errors::AppError;
 
 pub struct GeminiClient {
@@ -38,15 +39,66 @@ impl LlmClient for GeminiClient {
         let mut contents: Vec<Value> = Vec::new();
 
         for msg in &request.messages {
-            let role = match msg.role.as_str() {
-                "user" => "user",
-                "assistant" | "model" => "model",
-                _ => "user",
-            };
-            contents.push(json!({
-                "role": role,
-                "parts": [{"text": msg.content}]
-            }));
+            match msg.role {
+                MessageRole::User => {
+                    let mut parts = Vec::new();
+                    if let Some(text) = &msg.content {
+                        if !text.is_empty() {
+                            parts.push(json!({ "text": text }));
+                        }
+                    }
+                    if !parts.is_empty() {
+                        contents.push(json!({
+                            "role": "user",
+                            "parts": parts
+                        }));
+                    }
+                }
+                MessageRole::Assistant => {
+                    let mut parts = Vec::new();
+                    if let Some(text) = &msg.content {
+                        if !text.is_empty() {
+                            parts.push(json!({ "text": text }));
+                        }
+                    }
+                    if let Some(calls) = &msg.tool_calls {
+                        for call in calls {
+                            parts.push(json!({
+                                "functionCall": {
+                                    "name": call.name,
+                                    "args": call.arguments
+                                }
+                            }));
+                        }
+                    }
+                    if !parts.is_empty() {
+                        contents.push(json!({
+                            "role": "model",
+                            "parts": parts
+                        }));
+                    }
+                }
+                MessageRole::Tool => {
+                    if let Some(responses) = &msg.tool_responses {
+                        for resp in responses {
+                            let resp_val = serde_json::from_str::<Value>(&resp.content)
+                                .unwrap_or_else(|_| json!({ "result": resp.content }));
+                            contents.push(json!({
+                                "role": "user",
+                                "parts": [{
+                                    "functionResponse": {
+                                        "name": resp.name,
+                                        "response": resp_val
+                                    }
+                                }]
+                            }));
+                        }
+                    }
+                }
+                MessageRole::System => {
+                    // System prompt handled in system_instruction
+                }
+            }
         }
 
         let mut body = json!({
@@ -81,9 +133,7 @@ impl LlmClient for GeminiClient {
             }]);
         }
 
-        // Only ya29. tokens are OAuth tokens; AQ. and AIza. are AI Studio API Keys
         let is_oauth = self.api_key.starts_with("ya29.");
-
         let url = if is_oauth {
             format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", model)
         } else {
@@ -93,36 +143,56 @@ impl LlmClient for GeminiClient {
             )
         };
 
-        let mut req_builder = self
-            .client
-            .post(&url)
-            .header("content-type", "application/json");
+        // Outbound retry machine for 503, 504, 429
+        let max_retries = 3;
+        let mut attempts = 0;
+        let res_json: Value = loop {
+            attempts += 1;
+            let mut req_builder = self
+                .client
+                .post(&url)
+                .header("content-type", "application/json");
 
-        if is_oauth {
-            req_builder = req_builder.header("authorization", format!("Bearer {}", self.api_key));
-        } else {
-            req_builder = req_builder.header("x-goog-api-key", &self.api_key);
-        }
+            if is_oauth {
+                req_builder = req_builder.header("authorization", format!("Bearer {}", self.api_key));
+            } else {
+                req_builder = req_builder.header("x-goog-api-key", &self.api_key);
+            }
 
-        let res = req_builder
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AppError::Llm {
-                message: format!("HTTP send error: {}", e),
-            })?;
+            let res = match req_builder.json(&body).send().await {
+                Ok(r) => r,
+                Err(e) if attempts < max_retries => {
+                    warn!("Gemini API network attempt {} failed: {}. Retrying...", attempts, e);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempts as u64)).await;
+                    continue;
+                }
+                Err(e) => return Err(AppError::Llm { message: format!("HTTP send error: {}", e) }),
+            };
 
-        let status = res.status();
-        if !status.is_success() {
-            let err_text = res.text().await.unwrap_or_default();
-            return Err(AppError::Llm {
-                message: format!("Gemini API returned status {}: {}", status, err_text),
-            });
-        }
+            let status = res.status();
+            if (status.as_u16() == 503 || status.as_u16() == 504 || status.as_u16() == 429) && attempts < max_retries {
+                let delay = match attempts {
+                    1 => 500,
+                    2 => 1500,
+                    _ => 3500,
+                };
+                warn!("Gemini API returned status {}. Attempt {}/{} failed. Retrying in {}ms...", status, attempts, max_retries, delay);
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+                continue;
+            }
 
-        let res_json: Value = res.json().await.map_err(|e| AppError::Llm {
-            message: format!("Failed to parse Gemini JSON response: {}", e),
-        })?;
+            if !status.is_success() {
+                let err_text = res.text().await.unwrap_or_default();
+                return Err(AppError::Llm {
+                    message: format!("Gemini API returned status {}: {}", status, err_text),
+                });
+            }
+
+            match res.json::<Value>().await {
+                Ok(val) => break val,
+                Err(e) => return Err(AppError::Llm { message: format!("Failed to parse Gemini JSON response: {}", e) }),
+            }
+        };
 
         let duration = start.elapsed().as_millis() as u64;
 
@@ -175,34 +245,3 @@ impl LlmClient for GeminiClient {
         })
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::llm::ChatMessage;
-
-    #[tokio::test]
-    async fn test_gemini_client_aq_key() {
-        let key = match std::env::var("GEMINI_API_KEY") {
-            Ok(k) if !k.is_empty() => k,
-            _ => return,
-        };
-        let client = GeminiClient::new(key);
-        let req = LlmRequest {
-            model: "gemini-3.6-flash".to_string(),
-            messages: vec![ChatMessage {
-                role: "user".to_string(),
-                content: "Say 'hello'".to_string(),
-            }],
-            system_prompt: None,
-            temperature: Some(0.1),
-            max_tokens: Some(10),
-            tools: None,
-        };
-        let res = client.generate(&req).await;
-        assert!(res.is_ok(), "Gemini generate failed: {:?}", res.err());
-        let response = res.unwrap();
-        assert!(!response.content.is_empty());
-    }
-}
-

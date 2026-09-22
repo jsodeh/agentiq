@@ -104,6 +104,14 @@ function WorkspaceContent() {
       })
     );
 
+    // Listen for action limit warning
+    unlistenPromises.push(
+      listen<{ taskId: number; message: string }>('action_limit_warning', (event) => {
+        console.warn('[Workspace] Action limit warning:', event.payload?.message);
+        setWorkingText('Wrapping up final response…');
+      })
+    );
+
     // Listen for action started
     unlistenPromises.push(
       listen<AgentEvent>('action_started', (event) => {

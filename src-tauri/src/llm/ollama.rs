@@ -3,7 +3,7 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Instant;
 
-use super::{FinishReason, LlmClient, LlmRequest, LlmResponse, TokenUsage};
+use super::{FinishReason, LlmClient, LlmRequest, LlmResponse, MessageRole, TokenUsage};
 use crate::errors::AppError;
 
 pub struct OllamaClient {
@@ -40,9 +40,29 @@ impl LlmClient for OllamaClient {
         }
 
         for msg in &request.messages {
+            let role_str = match msg.role {
+                MessageRole::User => "user",
+                MessageRole::Assistant => "assistant",
+                MessageRole::Tool => "user",
+                MessageRole::System => "system",
+            };
+            let content_str = match &msg.role {
+                MessageRole::Tool => {
+                    if let Some(responses) = &msg.tool_responses {
+                        responses
+                            .iter()
+                            .map(|r| format!("TOOL_RESULT for '{}': {}", r.name, r.content))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    } else {
+                        msg.content.clone().unwrap_or_default()
+                    }
+                }
+                _ => msg.content.clone().unwrap_or_default(),
+            };
             messages.push(json!({
-                "role": msg.role,
-                "content": msg.content
+                "role": role_str,
+                "content": content_str
             }));
         }
 

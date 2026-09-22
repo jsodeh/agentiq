@@ -69,8 +69,15 @@ impl TaskExecutor {
                         // Take up to last 12 messages (6 turns) for context window efficiency
                         let slice = if msgs.len() > 12 { &msgs[msgs.len()-12..] } else { &msgs[..] };
                         slice.iter().map(|m| ChatMessage {
-                            role: m.role.clone(),
-                            content: m.content.clone(),
+                            role: match m.role.as_str() {
+                                "assistant" => crate::llm::MessageRole::Assistant,
+                                "tool" => crate::llm::MessageRole::Tool,
+                                "system" => crate::llm::MessageRole::System,
+                                _ => crate::llm::MessageRole::User,
+                            },
+                            content: Some(m.content.clone()),
+                            tool_calls: None,
+                            tool_responses: None,
                         }).collect()
                     }
                     Err(_) => vec![],
@@ -78,8 +85,10 @@ impl TaskExecutor {
             } else {
                 // No prior conversation — seed with current task as user message
                 vec![ChatMessage {
-                    role: "user".to_string(),
-                    content: task_desc.clone(),
+                    role: crate::llm::MessageRole::User,
+                    content: Some(task_desc.clone()),
+                    tool_calls: None,
+                    tool_responses: None,
                 }]
             }
         };
@@ -87,10 +96,12 @@ impl TaskExecutor {
         // 4. Build prompt and call LLM (use history if available, else task description alone)
         let mut messages = conversation_messages;
         // Ensure the current task description is the final user message if history didn't include it
-        if messages.is_empty() || messages.last().map(|m| m.role.as_str()) != Some("user") {
+        if messages.is_empty() || messages.last().map(|m| &m.role) != Some(&crate::llm::MessageRole::User) {
             messages.push(ChatMessage {
-                role: "user".to_string(),
-                content: task_desc.clone(),
+                role: crate::llm::MessageRole::User,
+                content: Some(task_desc.clone()),
+                tool_calls: None,
+                tool_responses: None,
             });
         }
 

@@ -72,47 +72,35 @@ impl ToolExecutor for FilesystemTool {
     }
 
     async fn execute(&self, tool_name: &str, params: Value) -> Result<Value, AppError> {
+        let path_str = params["path"].as_str().ok_or_else(|| AppError::ToolExecution {
+            tool: tool_name.to_string(),
+            message: "Missing 'path' parameter".into(),
+        })?;
+
+        let target_path = validate_sandboxed_path(path_str)?;
+
         match tool_name {
             "read_file" => {
-                let path_str = params["path"]
-                    .as_str()
-                    .ok_or_else(|| AppError::ToolExecution {
-                        tool: tool_name.to_string(),
-                        message: "Missing 'path' parameter".into(),
-                    })?;
                 let content =
-                    fs::read_to_string(path_str).map_err(|e| AppError::ToolExecution {
+                    fs::read_to_string(&target_path).map_err(|e| AppError::ToolExecution {
                         tool: tool_name.to_string(),
                         message: format!("Failed to read file '{}': {}", path_str, e),
                     })?;
                 Ok(json!({ "path": path_str, "content": content }))
             }
             "write_file" => {
-                let path_str = params["path"]
-                    .as_str()
-                    .ok_or_else(|| AppError::ToolExecution {
-                        tool: tool_name.to_string(),
-                        message: "Missing 'path' parameter".into(),
-                    })?;
                 let content = params["content"].as_str().unwrap_or("");
-                let path = PathBuf::from(path_str);
-                if let Some(parent) = path.parent() {
+                if let Some(parent) = target_path.parent() {
                     let _ = fs::create_dir_all(parent);
                 }
-                fs::write(&path, content).map_err(|e| AppError::ToolExecution {
+                fs::write(&target_path, content).map_err(|e| AppError::ToolExecution {
                     tool: tool_name.to_string(),
                     message: format!("Failed to write file '{}': {}", path_str, e),
                 })?;
                 Ok(json!({ "path": path_str, "bytes_written": content.len() }))
             }
             "list_directory" => {
-                let path_str = params["path"]
-                    .as_str()
-                    .ok_or_else(|| AppError::ToolExecution {
-                        tool: tool_name.to_string(),
-                        message: "Missing 'path' parameter".into(),
-                    })?;
-                let entries = fs::read_dir(path_str).map_err(|e| AppError::ToolExecution {
+                let entries = fs::read_dir(&target_path).map_err(|e| AppError::ToolExecution {
                     tool: tool_name.to_string(),
                     message: format!("Failed to list directory '{}': {}", path_str, e),
                 })?;
@@ -127,39 +115,21 @@ impl ToolExecutor for FilesystemTool {
                 Ok(json!({ "path": path_str, "items": items }))
             }
             "delete_file" => {
-                let path_str = params["path"]
-                    .as_str()
-                    .ok_or_else(|| AppError::ToolExecution {
-                        tool: tool_name.to_string(),
-                        message: "Missing 'path' parameter".into(),
-                    })?;
-                fs::remove_file(path_str).map_err(|e| AppError::ToolExecution {
+                fs::remove_file(&target_path).map_err(|e| AppError::ToolExecution {
                     tool: tool_name.to_string(),
                     message: format!("Failed to delete file '{}': {}", path_str, e),
                 })?;
                 Ok(json!({ "path": path_str, "deleted": true }))
             }
             "create_directory" => {
-                let path_str = params["path"]
-                    .as_str()
-                    .ok_or_else(|| AppError::ToolExecution {
-                        tool: tool_name.to_string(),
-                        message: "Missing 'path' parameter".into(),
-                    })?;
-                fs::create_dir_all(path_str).map_err(|e| AppError::ToolExecution {
+                fs::create_dir_all(&target_path).map_err(|e| AppError::ToolExecution {
                     tool: tool_name.to_string(),
                     message: format!("Failed to create directory '{}': {}", path_str, e),
                 })?;
                 Ok(json!({ "path": path_str, "created": true }))
             }
             "file_info" => {
-                let path_str = params["path"]
-                    .as_str()
-                    .ok_or_else(|| AppError::ToolExecution {
-                        tool: tool_name.to_string(),
-                        message: "Missing 'path' parameter".into(),
-                    })?;
-                let metadata = fs::metadata(path_str).map_err(|e| AppError::ToolExecution {
+                let metadata = fs::metadata(&target_path).map_err(|e| AppError::ToolExecution {
                     tool: tool_name.to_string(),
                     message: format!("Failed to get metadata for '{}': {}", path_str, e),
                 })?;
@@ -176,4 +146,27 @@ impl ToolExecutor for FilesystemTool {
             }),
         }
     }
+}
+
+fn validate_sandboxed_path(path_str: &str) -> Result<PathBuf, AppError> {
+    let target = PathBuf::from(path_str);
+    let base_workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+    let canonical = if target.exists() {
+        fs::canonicalize(&target).unwrap_or_else(|_| target.clone())
+    } else if target.is_relative() {
+        base_workspace.join(&target)
+    } else {
+        target.clone()
+    };
+
+    let base_canonical = fs::canonicalize(&base_workspace).unwrap_or(base_workspace);
+
+    if !canonical.starts_with(&base_canonical) {
+        return Err(AppError::ToolExecution {
+            tool: "filesystem".to_string(),
+            message: format!("Access Denied: Path '{}' violates sandbox workspace boundary", path_str),
+        });
+    }
+    Ok(canonical)
 }

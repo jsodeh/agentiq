@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Instant;
+use tracing::warn;
 
-use super::{FinishReason, LlmClient, LlmRequest, LlmResponse, TokenUsage};
+use super::{FinishReason, LlmClient, LlmRequest, LlmResponse, MessageRole, TokenUsage};
 use crate::errors::AppError;
 
 pub struct OpenAiClient {
@@ -40,10 +41,56 @@ impl LlmClient for OpenAiClient {
         }
 
         for msg in &request.messages {
-            messages.push(json!({
-                "role": msg.role,
-                "content": msg.content
-            }));
+            match msg.role {
+                MessageRole::User => {
+                    messages.push(json!({
+                        "role": "user",
+                        "content": msg.content.clone().unwrap_or_default()
+                    }));
+                }
+                MessageRole::Assistant => {
+                    let mut msg_obj = json!({
+                        "role": "assistant",
+                        "content": msg.content.clone()
+                    });
+                    if let Some(calls) = &msg.tool_calls {
+                        let calls_json: Vec<Value> = calls
+                            .iter()
+                            .map(|c| {
+                                json!({
+                                    "id": c.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": c.name,
+                                        "arguments": c.arguments.to_string()
+                                    }
+                                })
+                            })
+                            .collect();
+                        msg_obj["tool_calls"] = json!(calls_json);
+                    }
+                    messages.push(msg_obj);
+                }
+                MessageRole::Tool => {
+                    if let Some(responses) = &msg.tool_responses {
+                        for resp in responses {
+                            messages.push(json!({
+                                "role": "tool",
+                                "tool_call_id": resp.id,
+                                "content": resp.content
+                            }));
+                        }
+                    }
+                }
+                MessageRole::System => {
+                    if let Some(sys) = &msg.content {
+                        messages.push(json!({
+                            "role": "system",
+                            "content": sys
+                        }));
+                    }
+                }
+            }
         }
 
         let mut body = json!({
@@ -76,29 +123,52 @@ impl LlmClient for OpenAiClient {
             body["tools"] = json!(tools_json);
         }
 
-        let res = self
-            .client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AppError::Llm {
-                message: format!("HTTP send error: {}", e),
-            })?;
+        let max_retries = 3;
+        let mut attempts = 0;
+        let res_json: Value = loop {
+            attempts += 1;
+            let res = match self
+                .client
+                .post("https://api.openai.com/v1/chat/completions")
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(e) if attempts < max_retries => {
+                    warn!("OpenAI API network attempt {} failed: {}. Retrying...", attempts, e);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500 * attempts as u64)).await;
+                    continue;
+                }
+                Err(e) => return Err(AppError::Llm { message: format!("HTTP send error: {}", e) }),
+            };
 
-        let status = res.status();
-        if !status.is_success() {
-            let err_text = res.text().await.unwrap_or_default();
-            return Err(AppError::Llm {
-                message: format!("OpenAI API returned status {}: {}", status, err_text),
-            });
-        }
+            let status = res.status();
+            if (status.as_u16() == 503 || status.as_u16() == 504 || status.as_u16() == 429) && attempts < max_retries {
+                let delay = match attempts {
+                    1 => 500,
+                    2 => 1500,
+                    _ => 3500,
+                };
+                warn!("OpenAI API returned status {}. Attempt {}/{} failed. Retrying in {}ms...", status, attempts, max_retries, delay);
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+                continue;
+            }
 
-        let res_json: Value = res.json().await.map_err(|e| AppError::Llm {
-            message: format!("Failed to parse JSON response: {}", e),
-        })?;
+            if !status.is_success() {
+                let err_text = res.text().await.unwrap_or_default();
+                return Err(AppError::Llm {
+                    message: format!("OpenAI API returned status {}: {}", status, err_text),
+                });
+            }
+
+            match res.json::<Value>().await {
+                Ok(val) => break val,
+                Err(e) => return Err(AppError::Llm { message: format!("Failed to parse OpenAI JSON response: {}", e) }),
+            }
+        };
 
         let duration = start.elapsed().as_millis() as u64;
 

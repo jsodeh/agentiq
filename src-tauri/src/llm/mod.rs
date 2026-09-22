@@ -9,10 +9,28 @@ use serde_json::Value;
 
 use crate::errors::AppError;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageRole {
+    User,
+    Assistant,
+    Tool,
+    System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NativeToolResponse {
+    pub id: String,
+    pub name: String,
+    pub content: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
+    pub role: MessageRole,
+    pub content: Option<String>,
+    pub tool_calls: Option<Vec<ToolCall>>,
+    pub tool_responses: Option<Vec<NativeToolResponse>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
