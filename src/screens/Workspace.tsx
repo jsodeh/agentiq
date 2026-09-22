@@ -1,7 +1,7 @@
-import { Component, type ErrorInfo, type ReactNode, useMemo, useState, useEffect } from 'react';
+import { Component, type ErrorInfo, type ReactNode, useMemo, useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { BoltStyleChat, type WorkspaceMessage } from '../components/ui/bolt-style-chat';
+import { BoltStyleChat, type WorkspaceMessage, type SubAgentLogEntry } from '../components/ui/bolt-style-chat';
 import { getOrchestratorClient } from '../lib/orchestrator-client';
 
 type TaskPreparation = { agent_id: string; agent_name: string; activated_tools: string[]; task_id: string; };
@@ -36,7 +36,8 @@ function isDirectChat(prompt: string): boolean {
 
 interface AgentEvent {
   taskId: number;
-  agentId: number;
+  parentTaskId?: number;
+  agentId?: number;
   reasoning?: string;
   expectedOutcome?: string;
   tool?: string;
@@ -73,6 +74,17 @@ function WorkspaceContent() {
   const [workingText, setWorkingText] = useState('Thinking…');
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
   const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
+  const currentConversationIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
+
+  // Helper to filter out cross-talk events from other active conversations
+  const isCurrentContext = (taskId?: number) => {
+    if (currentConversationIdRef.current === null) return true;
+    return taskId === currentConversationIdRef.current;
+  };
 
   // Initialize orchestrator on mount
   useEffect(() => {
@@ -96,6 +108,7 @@ function WorkspaceContent() {
     // Listen for agent thinking
     unlistenPromises.push(
       listen<AgentEvent>('agent_thinking', (event) => {
+        if (!isCurrentContext(event.payload?.taskId)) return;
         const { reasoning } = event.payload;
         console.log('[Workspace] Agent thinking:', reasoning);
         if (reasoning) {
@@ -104,18 +117,115 @@ function WorkspaceContent() {
       })
     );
 
+    // Listen for streaming token chunks
+    unlistenPromises.push(
+      listen<{ taskId: number; chunk: string }>('agent_token_emitted', (event) => {
+        const { taskId, chunk } = event.payload;
+        if (!isCurrentContext(taskId)) return;
+        setWorkingText('Generating response…');
+
+        setMessages((current) => {
+          const activeMsgId = `task-run-${taskId}`;
+          const existing = current.find((m) => m.id === activeMsgId);
+
+          if (existing) {
+            return current.map((m) =>
+              m.id === activeMsgId
+                ? { ...m, content: (m.content || '') + chunk }
+                : m
+            );
+          } else {
+            return [
+              ...current,
+              {
+                id: activeMsgId,
+                role: 'assistant',
+                content: chunk,
+              },
+            ];
+          }
+        });
+      })
+    );
+
     // Listen for action limit warning
     unlistenPromises.push(
       listen<{ taskId: number; message: string }>('action_limit_warning', (event) => {
+        if (!isCurrentContext(event.payload?.taskId)) return;
         console.warn('[Workspace] Action limit warning:', event.payload?.message);
         setWorkingText('Wrapping up final response…');
       })
     );
 
+    // Listen for action awaiting approval (HITL Suspension)
+    unlistenPromises.push(
+      listen<{ taskId: number; approvalId: string; tool: string; params?: any; description?: string }>(
+        'action_awaiting_approval',
+        (event) => {
+          const { taskId, approvalId, tool, params, description } = event.payload;
+          if (!isCurrentContext(taskId)) return;
+          console.log('[Workspace] Action awaiting approval:', tool, approvalId);
+          setWorkingText('Awaiting security authorization…');
+
+          setMessages((current) => {
+            const activeMsgId = `task-run-${taskId}`;
+            const existing = current.find((m) => m.id === activeMsgId);
+            const approvalData = {
+              approvalId,
+              tool: tool || 'unknown_tool',
+              params,
+              description: description || `Agent requests approval to execute '${tool}'`,
+              status: 'pending' as const,
+            };
+
+            if (existing) {
+              return current.map((m) =>
+                m.id === activeMsgId
+                  ? { ...m, approvalRequest: approvalData }
+                  : m
+              );
+            } else {
+              return [
+                ...current,
+                {
+                  id: activeMsgId,
+                  role: 'assistant',
+                  content: '',
+                  approvalRequest: approvalData,
+                },
+              ];
+            }
+          });
+        }
+      )
+    );
+
     // Listen for action started
     unlistenPromises.push(
       listen<AgentEvent>('action_started', (event) => {
-        const { taskId, tool, description, params } = event.payload;
+        const { taskId, parentTaskId, tool, description, params } = event.payload;
+
+        // Sub-agent nested event handling
+        if (parentTaskId && parentTaskId === currentConversationIdRef.current) {
+          const logEntry: SubAgentLogEntry = {
+            subAgentId: tool || 'subagent_action',
+            subAgentName: description || tool,
+            tool,
+            details: description || `Executing ${tool}…`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+          setMessages((current) => {
+            const activeMsgId = `task-run-${parentTaskId}`;
+            return current.map((m) =>
+              m.id === activeMsgId
+                ? { ...m, subAgentLogs: [...(m.subAgentLogs || []), logEntry] }
+                : m
+            );
+          });
+          return;
+        }
+
+        if (!isCurrentContext(taskId)) return;
         console.log('[Workspace] Action started:', tool);
         setWorkingText(description || `Executing ${tool}…`);
         
@@ -154,6 +264,7 @@ function WorkspaceContent() {
     unlistenPromises.push(
       listen<AgentEvent>('action_completed', (event) => {
         const { taskId, tool, result } = event.payload;
+        if (!isCurrentContext(taskId)) return;
         console.log('[Workspace] Action completed:', tool);
         setMessages((current) => {
           const activeMsgId = `task-run-${taskId}`;
@@ -175,6 +286,7 @@ function WorkspaceContent() {
     unlistenPromises.push(
       listen<AgentEvent>('action_failed', (event) => {
         const { taskId, tool, error } = event.payload;
+        if (!isCurrentContext(taskId)) return;
         console.error('[Workspace] Action failed:', tool, error);
         setMessages((current) => {
           const activeMsgId = `task-run-${taskId}`;
@@ -195,6 +307,7 @@ function WorkspaceContent() {
     unlistenPromises.push(
       listen<AgentEvent>('task_completed', (event) => {
         const { taskId, result } = event.payload;
+        if (!isCurrentContext(taskId)) return;
         console.log('[Workspace] Task completed:', taskId);
         setMessages((current) => {
           const activeMsgId = `task-run-${taskId}`;
@@ -218,6 +331,7 @@ function WorkspaceContent() {
     unlistenPromises.push(
       listen<AgentEvent>('task_failed', (event) => {
         const { taskId, error } = event.payload;
+        if (!isCurrentContext(taskId)) return;
         console.log('[Workspace] Task failed:', taskId, error);
         setMessages((current) => [
           ...current,
@@ -232,6 +346,55 @@ function WorkspaceContent() {
       })
     );
 
+    // Reboot recovery: check for pending approval sessions in SQLite database
+    invoke<Array<{ conversation_id: number; pending_tool_name?: string; pending_tool_params?: string }>>('get_pending_suspensions')
+      .then((pendingList) => {
+        if (pendingList && pendingList.length > 0) {
+          pendingList.forEach((item) => {
+            if (item.conversation_id && item.pending_tool_name) {
+              const taskId = item.conversation_id;
+              const tool = item.pending_tool_name;
+              let params: any = undefined;
+              try {
+                if (item.pending_tool_params) params = JSON.parse(item.pending_tool_params);
+              } catch (_) {}
+              const approvalId = `approval-${taskId}-recovered`;
+
+              setMessages((current) => {
+                const activeMsgId = `task-run-${taskId}`;
+                const existing = current.find((m) => m.id === activeMsgId);
+                const approvalData = {
+                  approvalId,
+                  tool,
+                  params,
+                  description: `Recovered session: Agent requests approval to execute '${tool}'`,
+                  status: 'pending' as const,
+                };
+
+                if (existing) {
+                  return current.map((m) =>
+                    m.id === activeMsgId
+                      ? { ...m, approvalRequest: approvalData }
+                      : m
+                  );
+                } else {
+                  return [
+                    ...current,
+                    {
+                      id: activeMsgId,
+                      role: 'assistant',
+                      content: 'Execution suspended awaiting human approval (recovered session).',
+                      approvalRequest: approvalData,
+                    },
+                  ];
+                }
+              });
+            }
+          });
+        }
+      })
+      .catch((err) => console.warn('[Workspace] Could not fetch pending suspensions:', err));
+
     // Cleanup listeners on unmount
     return () => {
       Promise.all(unlistenPromises).then((unlisteners) => {
@@ -239,6 +402,33 @@ function WorkspaceContent() {
       });
     };
   }, []);
+
+
+  const handleResolveApproval = async (approvalId: string, approved: boolean) => {
+    try {
+      console.log('[Workspace] Resolving approval:', approvalId, approved);
+      setWorkingText(approved ? 'Executing authorized action…' : 'Action rejected. Continuing…');
+
+      setMessages((current) =>
+        current.map((m) => {
+          if (m.approvalRequest && m.approvalRequest.approvalId === approvalId) {
+            return {
+              ...m,
+              approvalRequest: {
+                ...m.approvalRequest,
+                status: approved ? 'approved' : 'denied',
+              },
+            };
+          }
+          return m;
+        })
+      );
+
+      await invoke('resolve_suspension', { id: approvalId, approved });
+    } catch (err) {
+      console.error('[Workspace] Failed to resolve suspension:', err);
+    }
+  };
 
   const submitTask = async (description: string) => {
     const msgId = `user-${Date.now()}`;
@@ -303,7 +493,16 @@ function WorkspaceContent() {
     }
   };
 
-  return <BoltStyleChat username={profile.username} messages={messages} isWorking={isWorking} workingText={workingText} onSend={submitTask} />;
+  return (
+    <BoltStyleChat
+      username={profile.username}
+      messages={messages}
+      isWorking={isWorking}
+      workingText={workingText}
+      onSend={submitTask}
+      onResolveApproval={handleResolveApproval}
+    />
+  );
 }
 
 export default function Workspace() {

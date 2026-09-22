@@ -148,9 +148,21 @@ impl AgentExecutionRuntime {
         model: &str,
         budget: &mut ExecutionBudget,
         suspension_registry: Option<&Arc<SuspensionRegistry>>,
+        parent_task_id: Option<i64>,
+        db_pool: Option<&crate::database::DbPool>,
     ) -> Result<RuntimeResult, AppError> {
+
         let mut final_content = String::new();
         let mut executed_any_tools = false;
+
+        let emit_event = |event_name: &str, mut payload: serde_json::Value| {
+            if let Some(app) = app {
+                if let Some(pid) = parent_task_id {
+                    payload["parentTaskId"] = json!(pid);
+                }
+                let _ = app.emit(event_name, payload);
+            }
+        };
 
         // ── Main ReAct Loop ──────────────────────────────────────────────
         while !budget.is_exhausted() {
@@ -158,41 +170,52 @@ impl AgentExecutionRuntime {
             let turn = budget.current_turns;
             let remaining = budget.remaining_turns();
 
+            if let Some(pool) = db_pool {
+                if let Ok(conn) = pool.get() {
+                    let _ = crate::database::queries::Queries::save_runtime_execution(
+                        &conn,
+                        task_id,
+                        "Running",
+                        budget.current_turns as i64,
+                        budget.current_tokens as i64,
+                        None,
+                        None,
+                    );
+                }
+            }
+
             info!(
                 "Runtime[task={}]: Turn {}/{} (remaining: {}, tokens: {}/{})",
                 task_id, turn, budget.max_turns, remaining, budget.current_tokens, budget.max_tokens
             );
 
+
             let is_final_turn = remaining == 0;
 
             // Emit warning when approaching budget limit
             if remaining == 1 {
-                if let Some(app) = app {
-                    let _ = app.emit(
-                        "action_limit_warning",
-                        json!({
-                            "taskId": task_id,
-                            "message": "Approaching action cap. Wrapping up execution..."
-                        }),
-                    );
-                }
-            }
-
-            // Emit thinking telemetry
-            if let Some(app) = app {
-                let _ = app.emit(
-                    "agent_thinking",
+                emit_event(
+                    "action_limit_warning",
                     json!({
                         "taskId": task_id,
-                        "reasoning": if turn == 1 {
-                            "Analyzing user request and available tools...".to_string()
-                        } else {
-                            format!("Processing step {}...", turn)
-                        },
-                        "expectedOutcome": "Determining next action"
+                        "message": "Approaching action cap. Wrapping up execution..."
                     }),
                 );
             }
+
+            // Emit thinking telemetry
+            emit_event(
+                "agent_thinking",
+                json!({
+                    "taskId": task_id,
+                    "reasoning": if turn == 1 {
+                        "Analyzing user request and available tools...".to_string()
+                    } else {
+                        format!("Processing step {}...", turn)
+                    },
+                    "expectedOutcome": "Determining next action"
+                }),
+            );
 
             // Build turn-specific system prompt
             let turn_system_prompt = if is_final_turn {
@@ -222,7 +245,33 @@ impl AgentExecutionRuntime {
                 tools: turn_tools,
             };
 
-            // ── LLM Call ─────────────────────────────────────────────────
+            // ── LLM Streaming for Final / Synthesis Turns ────────────────
+            if is_final_turn || tool_definitions.is_empty() {
+                use futures::StreamExt;
+                if let Ok(mut stream) = llm_client.generate_stream(&request).await {
+                    let mut streamed_text = String::new();
+                    while let Some(chunk_res) = stream.next().await {
+                        if let Ok(chunk) = chunk_res {
+                            if let Some(app) = app {
+                                let _ = app.emit(
+                                    "agent_token_emitted",
+                                    json!({
+                                        "taskId": task_id,
+                                        "chunk": chunk.clone()
+                                    }),
+                                );
+                            }
+                            streamed_text.push_str(&chunk);
+                        }
+                    }
+                    if !streamed_text.trim().is_empty() {
+                        final_content = streamed_text;
+                        break;
+                    }
+                }
+            }
+
+            // ── LLM Standard Call ─────────────────────────────────────────
             let response: LlmResponse = match llm_client.generate(&request).await {
                 Ok(res) => res,
                 Err(e) => {
@@ -267,6 +316,9 @@ impl AgentExecutionRuntime {
                     tool_responses: None,
                 });
 
+                let snap_turns = budget.current_turns as i64;
+                let snap_tokens = budget.current_tokens as i64;
+
                 // Execute tool calls in parallel via join_all
                 let tool_futures = response.tool_calls.into_iter().map(|call| {
                     let registry = tool_registry.clone();
@@ -281,6 +333,22 @@ impl AgentExecutionRuntime {
                                     "Runtime[task={}]: Tool '{}' requires user approval",
                                     task_id, call.name
                                 );
+
+                                if let Some(pool) = db_pool {
+                                    if let Ok(conn) = pool.get() {
+                                        let params_str = serde_json::to_string(&call.arguments).ok();
+                                        let _ = crate::database::queries::Queries::save_runtime_execution(
+                                            &conn,
+                                            task_id,
+                                            "AwaitingApproval",
+                                            snap_turns,
+                                            snap_tokens,
+                                            Some(&call.name),
+                                            params_str.as_deref(),
+                                        );
+                                    }
+                                }
+
 
                                 // Emit approval-required event to UI
                                 if let Some(ref app) = app_opt {
@@ -298,6 +366,7 @@ impl AgentExecutionRuntime {
                                         }),
                                     );
                                 }
+
 
                                 // Suspend: create a oneshot channel and wait
                                 let approval_id =
@@ -441,7 +510,27 @@ impl AgentExecutionRuntime {
                     tools: None,
                 };
 
-                if let Ok(synth_res) = llm_client.generate(&synth_request).await {
+                use futures::StreamExt;
+                if let Ok(mut stream) = llm_client.generate_stream(&synth_request).await {
+                    let mut streamed_text = String::new();
+                    while let Some(chunk_res) = stream.next().await {
+                        if let Ok(chunk) = chunk_res {
+                            if let Some(app) = app {
+                                let _ = app.emit(
+                                    "agent_token_emitted",
+                                    json!({
+                                        "taskId": task_id,
+                                        "chunk": chunk.clone()
+                                    }),
+                                );
+                            }
+                            streamed_text.push_str(&chunk);
+                        }
+                    }
+                    if !streamed_text.trim().is_empty() {
+                        final_content = streamed_text;
+                    }
+                } else if let Ok(synth_res) = llm_client.generate(&synth_request).await {
                     budget.record_token_usage(
                         synth_res.tokens_used.prompt_tokens,
                         synth_res.tokens_used.completion_tokens,
@@ -471,6 +560,20 @@ impl AgentExecutionRuntime {
             );
         }
 
+        if let Some(pool) = db_pool {
+            if let Ok(conn) = pool.get() {
+                let _ = crate::database::queries::Queries::save_runtime_execution(
+                    &conn,
+                    task_id,
+                    "Completed",
+                    budget.current_turns as i64,
+                    budget.current_tokens as i64,
+                    None,
+                    None,
+                );
+            }
+        }
+
         Ok(RuntimeResult {
             final_content,
             tools_executed: executed_any_tools,
@@ -479,3 +582,4 @@ impl AgentExecutionRuntime {
         })
     }
 }
+

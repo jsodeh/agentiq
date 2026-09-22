@@ -145,6 +145,8 @@ fn main() {
             commands::database::add_team_member,
             commands::chat::send_chat_message,
             commands::chat::resolve_suspension,
+            commands::chat::get_pending_suspensions,
+
             // System & setup commands
             commands::system::check_ollama,
             commands::system::download_ollama,

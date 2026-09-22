@@ -300,3 +300,18 @@ CREATE INDEX IF NOT EXISTS idx_inbox_profile ON inbox_messages(profile_id);
 CREATE INDEX IF NOT EXISTS idx_inbox_read ON inbox_messages(read);
 CREATE INDEX IF NOT EXISTS idx_team_profile ON team_members(profile_id);
 
+-- Runtime executions table for state serialization & session recovery
+CREATE TABLE IF NOT EXISTS runtime_executions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  turns_used INTEGER NOT NULL DEFAULT 0,
+  tokens_used INTEGER NOT NULL DEFAULT 0,
+  pending_tool_name TEXT,
+  pending_tool_params TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_executions_conv ON runtime_executions(conversation_id);
+

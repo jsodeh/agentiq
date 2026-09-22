@@ -222,7 +222,88 @@ impl Queries {
         }
         Ok(tasks)
     }
+
+    pub fn save_runtime_execution(
+        conn: &DbConn,
+        conversation_id: i64,
+        status: &str,
+        turns_used: i64,
+        tokens_used: i64,
+        pending_tool_name: Option<&str>,
+        pending_tool_params: Option<&str>,
+    ) -> Result<i64> {
+        let existing: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM runtime_executions WHERE conversation_id = ?1 LIMIT 1",
+                params![conversation_id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        if let Some(id) = existing {
+            conn.execute(
+                "UPDATE runtime_executions SET status = ?1, turns_used = ?2, tokens_used = ?3, pending_tool_name = ?4, pending_tool_params = ?5, updated_at = CURRENT_TIMESTAMP WHERE id = ?6",
+                params![status, turns_used, tokens_used, pending_tool_name, pending_tool_params, id],
+            )?;
+            Ok(id)
+        } else {
+            conn.execute(
+                "INSERT INTO runtime_executions (conversation_id, status, turns_used, tokens_used, pending_tool_name, pending_tool_params) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![conversation_id, status, turns_used, tokens_used, pending_tool_name, pending_tool_params],
+            )?;
+            Ok(conn.last_insert_rowid())
+        }
+    }
+
+    pub fn get_runtime_execution(conn: &DbConn, conversation_id: i64) -> Result<Option<RuntimeExecution>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, conversation_id, status, turns_used, tokens_used, pending_tool_name, pending_tool_params, created_at, updated_at FROM runtime_executions WHERE conversation_id = ?1 LIMIT 1"
+        )?;
+
+        let exec = stmt.query_row(params![conversation_id], |row| {
+            Ok(RuntimeExecution {
+                id: row.get(0)?,
+                conversation_id: row.get(1)?,
+                status: row.get(2)?,
+                turns_used: row.get(3)?,
+                tokens_used: row.get(4)?,
+                pending_tool_name: row.get(5)?,
+                pending_tool_params: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        }).ok();
+
+        Ok(exec)
+    }
+
+    pub fn get_pending_runtime_executions(conn: &DbConn) -> Result<Vec<RuntimeExecution>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, conversation_id, status, turns_used, tokens_used, pending_tool_name, pending_tool_params, created_at, updated_at FROM runtime_executions WHERE status = 'AwaitingApproval'"
+        )?;
+
+        let exec_iter = stmt.query_map([], |row| {
+            Ok(RuntimeExecution {
+                id: row.get(0)?,
+                conversation_id: row.get(1)?,
+                status: row.get(2)?,
+                turns_used: row.get(3)?,
+                tokens_used: row.get(4)?,
+                pending_tool_name: row.get(5)?,
+                pending_tool_params: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })?;
+
+        let mut execs = Vec::new();
+        for exec in exec_iter {
+            execs.push(exec?);
+        }
+        Ok(execs)
+    }
 }
+
 
 pub fn get_agent_by_id(conn: &DbConn, agent_id: i64) -> Result<Option<Agent>> {
     let mut stmt = conn.prepare("SELECT id, user_id, name, type, status, config, created_at FROM agents WHERE id = ?1")?;

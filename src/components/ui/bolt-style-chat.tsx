@@ -1,5 +1,5 @@
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Brain, ChevronDown, Lightbulb, Paperclip, Plus, SendHorizontal, Sparkles, Zap } from 'lucide-react';
+import { Bot, Brain, CheckCircle2, ChevronDown, Lightbulb, Paperclip, Plus, SendHorizontal, ShieldAlert, Sparkles, XCircle, Zap } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { WorkspaceBottomMenu, WorkspaceSidebar } from './workspace-navigation';
 import { SettingsModal } from './SettingsModal';
@@ -12,12 +12,29 @@ import { ProfileManagerModal } from './ProfileManagerModal';
 import { QuickActionPills } from './QuickActionPills';
 import { ToolCallsSection, ToolCallEntry } from './tool-calls-section';
 
+export type SubAgentLogEntry = {
+  subAgentId: string;
+  subAgentName?: string;
+  tool?: string;
+  status?: string;
+  details?: string;
+  timestamp?: string;
+};
+
 export type WorkspaceMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   meta?: string;
   toolCalls?: ToolCallEntry[];
+  subAgentLogs?: SubAgentLogEntry[];
+  approvalRequest?: {
+    approvalId: string;
+    tool: string;
+    params?: any;
+    description: string;
+    status: 'pending' | 'approved' | 'denied';
+  };
 };
 
 const models = [
@@ -32,12 +49,14 @@ export function BoltStyleChat({
   isWorking,
   workingText = 'Thinking…',
   onSend,
+  onResolveApproval,
 }: {
   username?: string;
   messages: WorkspaceMessage[];
   isWorking: boolean;
   workingText?: string;
   onSend: (message: string) => void;
+  onResolveApproval?: (approvalId: string, approved: boolean) => void;
 }) {
   const [input, setInput]                     = useState('');
   const [model, setModel]                     = useState(models[0]);
@@ -206,6 +225,96 @@ export function BoltStyleChat({
                       {message.toolCalls && message.toolCalls.length > 0 && (
                         <div className="mt-3">
                           <ToolCallsSection toolCalls={message.toolCalls} defaultExpanded={false} />
+                        </div>
+                      )}
+
+                      {/* Interactive Human-in-the-Loop Approval Card */}
+                      {message.approvalRequest && (
+                        <div className="mt-3 overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4 dark:border-amber-500/30 dark:bg-amber-500/[0.06]">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400">
+                              <ShieldAlert className="size-4 animate-pulse" />
+                              <span>Action Requires Security Authorization</span>
+                            </div>
+                            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 font-mono text-[10px] text-amber-600 dark:text-amber-300">
+                              {message.approvalRequest.tool}
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-xs text-gray-700 dark:text-gray-200">
+                            {message.approvalRequest.description}
+                          </p>
+
+                          {message.approvalRequest.params && (
+                            <div className="mt-2.5 max-h-40 overflow-x-auto rounded-lg border border-black/10 bg-black/5 p-2.5 font-mono text-[11px] text-gray-800 dark:border-white/10 dark:bg-black/40 dark:text-gray-200">
+                              {typeof message.approvalRequest.params === 'string'
+                                ? message.approvalRequest.params
+                                : JSON.stringify(message.approvalRequest.params, null, 2)}
+                            </div>
+                          )}
+
+                          <div className="mt-3.5 flex items-center gap-2.5">
+                            {message.approvalRequest.status === 'pending' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => onResolveApproval?.(message.approvalRequest!.approvalId, true)}
+                                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500"
+                                >
+                                  <CheckCircle2 className="size-3.5" />
+                                  Confirm Action
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onResolveApproval?.(message.approvalRequest!.approvalId, false)}
+                                  className="flex items-center gap-1.5 rounded-lg bg-red-600/10 px-3.5 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-600/20 dark:bg-red-500/20 dark:text-red-400 dark:hover:bg-red-500/30"
+                                >
+                                  <XCircle className="size-3.5" />
+                                  Deny Action
+                                </button>
+                              </>
+                            ) : message.approvalRequest.status === 'approved' ? (
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle2 className="size-4" />
+                                <span>Authorized & Executing</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400">
+                                <XCircle className="size-4" />
+                                <span>Execution Rejected</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Nested Sub-Agent Progress Visualizer */}
+                      {message.subAgentLogs && message.subAgentLogs.length > 0 && (
+                        <div className="mt-3 overflow-hidden rounded-xl border border-cyan-500/20 bg-cyan-500/[0.03] p-3.5 dark:border-cyan-500/30 dark:bg-cyan-500/[0.05]">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 text-xs font-bold text-cyan-600 dark:text-cyan-400">
+                              <Bot className="size-4 animate-pulse" />
+                              <span>Sub-Agent Worker Executions ({message.subAgentLogs.length})</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2 border-l-2 border-cyan-500/30 pl-3 ml-1">
+                            {message.subAgentLogs.map((log, idx) => (
+                              <div key={idx} className="text-xs">
+                                <div className="flex items-center gap-2 font-medium text-gray-800 dark:text-gray-200">
+                                  <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-mono text-cyan-700 dark:text-cyan-300">
+                                    {log.subAgentName || log.subAgentId}
+                                  </span>
+                                  {log.tool && <span className="font-mono text-[11px] text-gray-500">[{log.tool}]</span>}
+                                  {log.timestamp && <span className="text-[9px] text-gray-400 ml-auto">{log.timestamp}</span>}
+                                </div>
+                                {log.details && (
+                                  <p className="mt-1 text-[11px] text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
+                                    {log.details}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
 

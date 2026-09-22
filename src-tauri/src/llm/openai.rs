@@ -218,4 +218,81 @@ impl LlmClient for OpenAiClient {
             response_time_ms: duration,
         })
     }
+
+    async fn generate_stream(
+        &self,
+        request: &LlmRequest,
+    ) -> Result<futures::stream::BoxStream<'static, Result<String, AppError>>, AppError> {
+        use async_stream::try_stream;
+        use futures::StreamExt;
+
+        let model = if request.model.is_empty() {
+            "gpt-4o-mini".to_string()
+        } else {
+            request.model.clone()
+        };
+
+        let mut body = json!({
+            "model": model,
+            "stream": true,
+            "messages": []
+        });
+
+        let mut msgs: Vec<Value> = Vec::new();
+        if let Some(sys) = &request.system_prompt {
+            msgs.push(json!({ "role": "system", "content": sys }));
+        }
+        for msg in &request.messages {
+            let role = match msg.role {
+                MessageRole::User => "user",
+                MessageRole::Assistant => "assistant",
+                MessageRole::Tool => "tool",
+                MessageRole::System => "system",
+            };
+            if let Some(c) = &msg.content {
+                msgs.push(json!({ "role": role, "content": c }));
+            }
+        }
+        body["messages"] = json!(msgs);
+
+        let res = self
+            .client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AppError::Llm {
+                message: format!("HTTP stream send error: {}", e),
+            })?;
+
+        let stream = try_stream! {
+            let mut byte_stream = res.bytes_stream();
+            let mut buffer = String::new();
+            while let Some(item) = byte_stream.next().await {
+                let bytes = item.map_err(|e| AppError::Llm { message: e.to_string() })?;
+                buffer.push_str(&String::from_utf8_lossy(&bytes));
+                while let Some(pos) = buffer.find('\n') {
+                    let line = buffer[..pos].trim().to_string();
+                    buffer.drain(..=pos);
+                    if line.starts_with("data: ") {
+                        let data = line[6..].trim();
+                        if data == "[DONE]" {
+                            break;
+                        }
+                        if let Ok(json_val) = serde_json::from_str::<Value>(data) {
+                            if let Some(content) = json_val["choices"][0]["delta"]["content"].as_str() {
+                                if !content.is_empty() {
+                                    yield content.to_string();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(stream))
+    }
 }

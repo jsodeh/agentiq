@@ -97,8 +97,11 @@ impl ReActEngine {
             &model,
             &mut budget,
             Some(suspension_registry),
+            None, // No parent task ID for primary chat
+            Some(pool),
         )
         .await?;
+
 
         info!(
             "ReActEngine: Completed for conversation {} in {} turns ({} tokens)",

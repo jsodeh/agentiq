@@ -13,6 +13,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
 
     // Incremental migrations for pure Rust backend
     migrate_tasks_table(conn)?;
+    migrate_runtime_executions_table(conn)?;
 
     Ok(())
 }
@@ -39,3 +40,28 @@ fn migrate_tasks_table(conn: &Connection) -> Result<()> {
 
     Ok(())
 }
+
+fn migrate_runtime_executions_table(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS runtime_executions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            turns_used INTEGER NOT NULL DEFAULT 0,
+            tokens_used INTEGER NOT NULL DEFAULT 0,
+            pending_tool_name TEXT,
+            pending_tool_params TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_runtime_executions_conv ON runtime_executions(conversation_id)",
+        [],
+    )?;
+
+    Ok(())
+}
+

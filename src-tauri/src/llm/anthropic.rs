@@ -211,4 +211,82 @@ impl LlmClient for AnthropicClient {
             response_time_ms: duration,
         })
     }
+
+    async fn generate_stream(
+        &self,
+        request: &LlmRequest,
+    ) -> Result<futures::stream::BoxStream<'static, Result<String, AppError>>, AppError> {
+        use async_stream::try_stream;
+        use futures::StreamExt;
+
+        let model = if request.model.is_empty() {
+            "claude-3-5-sonnet-20241022".to_string()
+        } else {
+            request.model.clone()
+        };
+
+        let mut body = json!({
+            "model": model,
+            "max_tokens": request.max_tokens.unwrap_or(4096),
+            "stream": true,
+            "messages": []
+        });
+
+        if let Some(sys) = &request.system_prompt {
+            body["system"] = json!(sys);
+        }
+
+        let mut msgs: Vec<Value> = Vec::new();
+        for msg in &request.messages {
+            let role = match msg.role {
+                MessageRole::User | MessageRole::Tool => "user",
+                MessageRole::Assistant => "assistant",
+                MessageRole::System => "user",
+            };
+            if let Some(c) = &msg.content {
+                msgs.push(json!({ "role": role, "content": c }));
+            }
+        }
+        body["messages"] = json!(msgs);
+
+        let res = self
+            .client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AppError::Llm {
+                message: format!("HTTP stream send error to Anthropic: {}", e),
+            })?;
+
+        let stream = try_stream! {
+            let mut byte_stream = res.bytes_stream();
+            let mut buffer = String::new();
+            while let Some(item) = byte_stream.next().await {
+                let bytes = item.map_err(|e| AppError::Llm { message: e.to_string() })?;
+                buffer.push_str(&String::from_utf8_lossy(&bytes));
+                while let Some(pos) = buffer.find('\n') {
+                    let line = buffer[..pos].trim().to_string();
+                    buffer.drain(..=pos);
+                    if line.starts_with("data: ") {
+                        let data = line[6..].trim();
+                        if let Ok(json_val) = serde_json::from_str::<Value>(data) {
+                            if json_val["type"] == "content_block_delta" {
+                                if let Some(text) = json_val["delta"]["text"].as_str() {
+                                    if !text.is_empty() {
+                                        yield text.to_string();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(stream))
+    }
 }

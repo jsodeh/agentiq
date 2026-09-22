@@ -82,9 +82,15 @@ pub struct LlmResponse {
     pub response_time_ms: u64,
 }
 
+use futures::stream::BoxStream;
+
 #[async_trait]
 pub trait LlmClient: Send + Sync {
     async fn generate(&self, request: &LlmRequest) -> Result<LlmResponse, AppError>;
+    async fn generate_stream(
+        &self,
+        request: &LlmRequest,
+    ) -> Result<BoxStream<'static, Result<String, AppError>>, AppError>;
 }
 
 pub fn create_llm_client(

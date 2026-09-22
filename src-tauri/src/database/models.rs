@@ -135,3 +135,17 @@ pub struct SystemMemory {
     pub category: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeExecution {
+    pub id: i64,
+    pub conversation_id: i64,
+    pub status: String,
+    pub turns_used: i64,
+    pub tokens_used: i64,
+    pub pending_tool_name: Option<String>,
+    pub pending_tool_params: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+

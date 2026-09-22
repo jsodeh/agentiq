@@ -133,8 +133,11 @@ impl TaskExecutor {
             &model_name,
             &mut budget,
             None, // No HITL approvals for background tasks
+            None, // No parent task ID for background tasks
+            Some(&pool),
         )
         .await;
+
 
         match result {
             Ok(runtime_result) => {

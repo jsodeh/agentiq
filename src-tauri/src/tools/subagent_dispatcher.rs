@@ -171,10 +171,12 @@ impl ToolExecutor for SubAgentDispatcherTool {
         // 6. Create a scoped budget for the sub-agent
         let mut child_budget = ExecutionBudget::for_subagent();
 
+        let parent_task_id = params.get("parent_task_id").and_then(|v| v.as_i64());
+
         // 7. Run the child runtime to completion
         let result = AgentExecutionRuntime::run_loop(
             None, // Headless — no Tauri events for child runtimes
-            0,    // No task_id for sub-agent runs
+            0,    // Task ID for sub-agent runs
             llm_client.as_ref(),
             &child_system_prompt,
             &mut child_messages,
@@ -183,8 +185,11 @@ impl ToolExecutor for SubAgentDispatcherTool {
             &model,
             &mut child_budget,
             None, // No HITL approvals in child runtimes
+            parent_task_id,
+            None, // No db_pool for child runtimes
         )
         .await;
+
 
         match result {
             Ok(runtime_result) => {

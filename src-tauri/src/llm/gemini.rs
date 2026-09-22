@@ -244,4 +244,97 @@ impl LlmClient for GeminiClient {
             response_time_ms: duration,
         })
     }
+
+    async fn generate_stream(
+        &self,
+        request: &LlmRequest,
+    ) -> Result<futures::stream::BoxStream<'static, Result<String, AppError>>, AppError> {
+        use async_stream::try_stream;
+        use futures::StreamExt;
+
+        let model = if request.model.is_empty() || request.model == "gemini-1.5-flash" || request.model == "gemini-2.5-flash" {
+            "gemini-3.6-flash".to_string()
+        } else {
+            request.model.clone()
+        };
+
+        let mut contents: Vec<Value> = Vec::new();
+        for msg in &request.messages {
+            let role_str = match msg.role {
+                MessageRole::User => "user",
+                MessageRole::Assistant => "model",
+                MessageRole::Tool => "user",
+                MessageRole::System => "user",
+            };
+            if let Some(text) = &msg.content {
+                if !text.is_empty() {
+                    contents.push(json!({
+                        "role": role_str,
+                        "parts": [{ "text": text }]
+                    }));
+                }
+            }
+        }
+
+        let mut body = json!({ "contents": contents });
+        if let Some(sys) = &request.system_prompt {
+            body["systemInstruction"] = json!({
+                "parts": [{ "text": sys }]
+            });
+        }
+
+        let is_oauth = self.api_key.starts_with("ya29.");
+        let url = if is_oauth {
+            format!("https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse", model)
+        } else {
+            format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse&key={}",
+                model, self.api_key
+            )
+        };
+
+        let mut req_builder = self.client.post(&url).header("content-type", "application/json");
+        if is_oauth {
+            req_builder = req_builder.header("authorization", format!("Bearer {}", self.api_key));
+        } else {
+            req_builder = req_builder.header("x-goog-api-key", &self.api_key);
+        }
+
+        let res = req_builder.json(&body).send().await.map_err(|e| AppError::Llm {
+            message: format!("HTTP stream send error to Gemini: {}", e),
+        })?;
+
+        let stream = try_stream! {
+            let mut byte_stream = res.bytes_stream();
+            let mut buffer = String::new();
+            while let Some(item) = byte_stream.next().await {
+                let bytes = item.map_err(|e| AppError::Llm { message: e.to_string() })?;
+                buffer.push_str(&String::from_utf8_lossy(&bytes));
+                while let Some(pos) = buffer.find('\n') {
+                    let line = buffer[..pos].trim().to_string();
+                    buffer.drain(..=pos);
+                    if line.starts_with("data: ") {
+                        let data = line[6..].trim();
+                        if let Ok(json_val) = serde_json::from_str::<Value>(data) {
+                            if let Some(candidates) = json_val["candidates"].as_array() {
+                                if let Some(first) = candidates.first() {
+                                    if let Some(parts) = first["content"]["parts"].as_array() {
+                                        for part in parts {
+                                            if let Some(t) = part["text"].as_str() {
+                                                if !t.is_empty() {
+                                                    yield t.to_string();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(stream))
+    }
 }

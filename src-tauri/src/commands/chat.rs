@@ -51,5 +51,14 @@ pub async fn resolve_suspension(
     Ok(result)
 }
 
+#[tauri::command]
+pub async fn get_pending_suspensions(
+    pool: State<'_, DbPool>,
+) -> Result<Vec<crate::database::models::RuntimeExecution>, AppError> {
+    let conn = pool.get()?;
+    crate::database::queries::Queries::get_pending_runtime_executions(&conn)
+}
+
+
 
 
