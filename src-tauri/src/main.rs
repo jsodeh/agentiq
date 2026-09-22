@@ -49,6 +49,7 @@ fn main() {
     let _ = registry.load_from_dir(&shared_data_dir);
 
     let agent_registry = Arc::new(registry);
+    let suspension_registry = Arc::new(orchestrator::suspension::SuspensionRegistry::new());
 
     let native_orchestrator = NativeOrchestratorState::new(
         db_pool.clone(),
@@ -62,6 +63,7 @@ fn main() {
         .manage(db_pool)
         .manage(app_config)
         .manage(agent_registry)
+        .manage(suspension_registry)
         .manage(native_orchestrator.clone())
         .setup(move |app| {
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -142,6 +144,7 @@ fn main() {
             commands::database::get_team_members,
             commands::database::add_team_member,
             commands::chat::send_chat_message,
+            commands::chat::resolve_suspension,
             // System & setup commands
             commands::system::check_ollama,
             commands::system::download_ollama,

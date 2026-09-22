@@ -6,9 +6,10 @@ use crate::database::models::Task;
 use crate::database::queries::{self, Queries};
 use crate::database::DbPool;
 use crate::errors::AppError;
-use crate::llm::{ChatMessage, LlmClient, LlmRequest};
+use crate::llm::{ChatMessage, LlmClient, MessageRole};
 use crate::orchestrator::events::{EventBus, OrchestratorEvent};
-use crate::orchestrator::parser::ResponseParser;
+use crate::orchestrator::master::MasterOrchestrator;
+use crate::orchestrator::runtime::{AgentExecutionRuntime, ExecutionBudget};
 use crate::tools::ToolRegistry;
 
 pub struct TaskExecutor;
@@ -47,189 +48,139 @@ impl TaskExecutor {
                 .unwrap_or_else(|| "default".into())
         };
 
-        let system_prompt = crate::orchestrator::master::MasterOrchestrator::build_hydrated_system_prompt(
+        let system_prompt = MasterOrchestrator::build_hydrated_system_prompt(
             &pool,
             &agent_registry,
             &agent_type,
         );
 
-        // 3. Load recent conversation history for this agent to give context
-        let conversation_messages: Vec<ChatMessage> = {
+        // 3. Load recent conversation history for context
+        let mut chat_messages: Vec<ChatMessage> = {
             let conn = pool.get()?;
-            // Find the most recent conversation for this agent
-            let conv_id_opt: Option<i64> = conn.query_row(
-                "SELECT id FROM conversations WHERE agent_id = ?1 ORDER BY created_at DESC LIMIT 1",
-                rusqlite::params![agent_id],
-                |row| row.get(0),
-            ).ok();
+            let conv_id_opt: Option<i64> = conn
+                .query_row(
+                    "SELECT id FROM conversations WHERE agent_id = ?1 ORDER BY created_at DESC LIMIT 1",
+                    rusqlite::params![agent_id],
+                    |row| row.get(0),
+                )
+                .ok();
 
             if let Some(conv_id) = conv_id_opt {
                 match Queries::get_conversation_messages(&conn, conv_id) {
                     Ok(msgs) => {
-                        // Take up to last 12 messages (6 turns) for context window efficiency
-                        let slice = if msgs.len() > 12 { &msgs[msgs.len()-12..] } else { &msgs[..] };
-                        slice.iter().map(|m| ChatMessage {
-                            role: match m.role.as_str() {
-                                "assistant" => crate::llm::MessageRole::Assistant,
-                                "tool" => crate::llm::MessageRole::Tool,
-                                "system" => crate::llm::MessageRole::System,
-                                _ => crate::llm::MessageRole::User,
-                            },
-                            content: Some(m.content.clone()),
-                            tool_calls: None,
-                            tool_responses: None,
-                        }).collect()
+                        let slice = if msgs.len() > 12 {
+                            &msgs[msgs.len() - 12..]
+                        } else {
+                            &msgs[..]
+                        };
+                        slice
+                            .iter()
+                            .map(|m| ChatMessage {
+                                role: match m.role.as_str() {
+                                    "assistant" => MessageRole::Assistant,
+                                    "tool" => MessageRole::Tool,
+                                    "system" => MessageRole::System,
+                                    _ => MessageRole::User,
+                                },
+                                content: Some(m.content.clone()),
+                                tool_calls: None,
+                                tool_responses: None,
+                            })
+                            .collect()
                     }
                     Err(_) => vec![],
                 }
             } else {
-                // No prior conversation — seed with current task as user message
-                vec![ChatMessage {
-                    role: crate::llm::MessageRole::User,
-                    content: Some(task_desc.clone()),
-                    tool_calls: None,
-                    tool_responses: None,
-                }]
+                vec![]
             }
         };
 
-        // 4. Build prompt and call LLM (use history if available, else task description alone)
-        let mut messages = conversation_messages;
-        // Ensure the current task description is the final user message if history didn't include it
-        if messages.is_empty() || messages.last().map(|m| &m.role) != Some(&crate::llm::MessageRole::User) {
-            messages.push(ChatMessage {
-                role: crate::llm::MessageRole::User,
+        // Ensure the current task description is the final user message
+        if chat_messages.is_empty()
+            || chat_messages.last().map(|m| &m.role) != Some(&MessageRole::User)
+        {
+            chat_messages.push(ChatMessage {
+                role: MessageRole::User,
                 content: Some(task_desc.clone()),
                 tool_calls: None,
                 tool_responses: None,
             });
         }
 
-        let request = LlmRequest {
-            system_prompt: Some(system_prompt),
-            messages,
-            model: model_name,
-            max_tokens: Some(2048),
-            temperature: Some(0.7),
-            tools: None,
-        };
+        // 4. Emit AgentThinking
+        event_bus.publish(OrchestratorEvent::AgentThinking {
+            task_id,
+            agent_id,
+            reasoning: format!("Executing background task: {}", task_desc),
+            expected_outcome: Some("Task completion with tool usage".to_string()),
+        });
 
-        let llm_res = match llm.generate(&request).await {
-            Ok(res) => res,
-            Err(e) => {
-                let err_msg = format!("LLM generation failed: {}", e);
-                event_bus.publish(OrchestratorEvent::TaskFailed {
-                    task_id,
-                    agent_id,
-                    error: err_msg.clone(),
+        // 5. Create a dynamic execution budget for background tasks
+        let mut budget = ExecutionBudget::for_background_task();
+
+        // 6. Get tool definitions
+        let tool_definitions = tools.get_tool_definitions();
+
+        // 7. Delegate to the Unified Runtime (headless — no AppHandle)
+        let result = AgentExecutionRuntime::run_loop(
+            None, // No app handle for background tasks
+            task_id,
+            llm.as_ref(),
+            &system_prompt,
+            &mut chat_messages,
+            &tools,
+            &tool_definitions,
+            &model_name,
+            &mut budget,
+            None, // No HITL approvals for background tasks
+        )
+        .await;
+
+        match result {
+            Ok(runtime_result) => {
+                let final_result = json!({
+                    "output": runtime_result.final_content,
+                    "turns_used": runtime_result.total_turns,
+                    "tokens_used": runtime_result.total_tokens,
+                    "tools_executed": runtime_result.tools_executed,
                 });
-                let conn = pool.get()?;
-                queries::update_task_status(&conn, task_id, "failed", None)?;
-                queries::create_log(&conn, task_id, agent_id, "error", &err_msg, None)?;
-                return Err(e);
-            }
-        };
 
-        // 4. Parse execution plan
-        let plan = match ResponseParser::parse(&llm_res.content) {
-            Ok(p) => p,
-            Err(_e) => {
-                let fallback_msg = format!("LLM completed task with summary: {}", llm_res.content);
                 event_bus.publish(OrchestratorEvent::TaskCompleted {
                     task_id,
                     agent_id,
-                    result: json!({ "output": llm_res.content }),
+                    result: final_result.clone(),
                 });
+
                 let conn = pool.get()?;
                 queries::update_task_status(
                     &conn,
                     task_id,
                     "completed",
-                    Some(&json!({ "output": llm_res.content }).to_string()),
+                    Some(&final_result.to_string()),
                 )?;
-                queries::create_log(&conn, task_id, agent_id, "info", &fallback_msg, None)?;
-                return Ok(());
+                queries::create_log(
+                    &conn,
+                    task_id,
+                    agent_id,
+                    "info",
+                    "Task execution finished",
+                    Some(&final_result.to_string()),
+                )?;
             }
-        };
+            Err(e) => {
+                let err_msg = format!("Task execution failed: {}", e);
+                event_bus.publish(OrchestratorEvent::TaskFailed {
+                    task_id,
+                    agent_id,
+                    error: err_msg.clone(),
+                });
 
-        // 5. Notify AgentThinking
-        event_bus.publish(OrchestratorEvent::AgentThinking {
-            task_id,
-            agent_id,
-            reasoning: plan.reasoning.clone(),
-            expected_outcome: plan.expected_outcome.clone(),
-        });
-
-        // 6. Execute actions in plan
-        let mut results = Vec::new();
-        for action in &plan.actions {
-            event_bus.publish(OrchestratorEvent::ActionStarted {
-                task_id,
-                agent_id,
-                tool: action.tool.clone(),
-                params: action.params.clone(),
-                description: action.description.clone(),
-            });
-
-            match tools.execute_tool(&action.tool, action.params.clone()).await {
-                Ok(res) => {
-                    event_bus.publish(OrchestratorEvent::ActionCompleted {
-                        task_id,
-                        agent_id,
-                        tool: action.tool.clone(),
-                        result: res.clone(),
-                        success: true,
-                    });
-                    results.push(json!({
-                        "tool": action.tool,
-                        "success": true,
-                        "result": res
-                    }));
-                }
-                Err(err) => {
-                    let err_str = err.to_string();
-                    event_bus.publish(OrchestratorEvent::ActionFailed {
-                        task_id,
-                        agent_id,
-                        tool: action.tool.clone(),
-                        error: err_str.clone(),
-                    });
-                    results.push(json!({
-                        "tool": action.tool,
-                        "success": false,
-                        "error": err_str
-                    }));
-                }
+                let conn = pool.get()?;
+                queries::update_task_status(&conn, task_id, "failed", None)?;
+                queries::create_log(&conn, task_id, agent_id, "error", &err_msg, None)?;
+                return Err(e);
             }
         }
-
-        // 7. Complete Task
-        let final_result = json!({
-            "reasoning": plan.reasoning,
-            "actions": results
-        });
-
-        event_bus.publish(OrchestratorEvent::TaskCompleted {
-            task_id,
-            agent_id,
-            result: final_result.clone(),
-        });
-
-        let conn = pool.get()?;
-        queries::update_task_status(
-            &conn,
-            task_id,
-            "completed",
-            Some(&final_result.to_string()),
-        )?;
-        queries::create_log(
-            &conn,
-            task_id,
-            agent_id,
-            "info",
-            "Task execution finished",
-            Some(&final_result.to_string()),
-        )?;
 
         Ok(())
     }

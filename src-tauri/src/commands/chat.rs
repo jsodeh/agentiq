@@ -9,6 +9,8 @@ use crate::database::DbPool;
 use crate::errors::AppError;
 use crate::agents::AgentPluginRegistry;
 
+use crate::orchestrator::suspension::SuspensionRegistry;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatResponse {
     pub message_id: i64,
@@ -21,6 +23,7 @@ pub async fn send_chat_message(
     pool: State<'_, DbPool>,
     config: State<'_, Arc<Mutex<AppConfig>>>,
     agent_registry: State<'_, Arc<AgentPluginRegistry>>,
+    suspension_registry: State<'_, Arc<SuspensionRegistry>>,
     conversation_id: i64,
     message: String,
 ) -> Result<ChatResponse, AppError> {
@@ -30,10 +33,23 @@ pub async fn send_chat_message(
         &pool,
         &config,
         &agent_registry,
+        &suspension_registry,
         conversation_id,
         &message,
     )
     .await
 }
+
+#[tauri::command]
+pub async fn resolve_suspension(
+    suspension_registry: State<'_, Arc<SuspensionRegistry>>,
+    id: String,
+    approved: bool,
+) -> Result<bool, AppError> {
+    info!("Resolving suspension {} approved={}", id, approved);
+    let result = suspension_registry.resolve(&id, approved);
+    Ok(result)
+}
+
 
 

@@ -1,11 +1,13 @@
 pub mod browser;
 pub mod filesystem;
 pub mod mcp;
+pub mod subagent_dispatcher;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+use crate::agents::AgentPluginRegistry;
 use crate::errors::AppError;
 use crate::llm::ToolDefinition;
 
@@ -22,7 +24,21 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    pub fn new() -> Self {
+    /// Create a full registry with all tools including the sub-agent dispatcher.
+    pub fn new(agent_registry: Arc<AgentPluginRegistry>) -> Self {
+        Self {
+            executors: vec![
+                Arc::new(filesystem::FilesystemTool::new()),
+                Arc::new(browser::BrowserTool::new()),
+                Arc::new(mcp::McpTool::new()),
+                Arc::new(subagent_dispatcher::SubAgentDispatcherTool::new(agent_registry)),
+            ],
+        }
+    }
+
+    /// Create a registry WITHOUT the sub-agent dispatcher.
+    /// Used by child sub-agent runtimes to prevent infinite delegation recursion.
+    pub fn new_without_subagents() -> Self {
         Self {
             executors: vec![
                 Arc::new(filesystem::FilesystemTool::new()),
@@ -52,4 +68,3 @@ impl ToolRegistry {
         })
     }
 }
-
