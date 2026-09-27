@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use tauri::AppHandle;
 use tracing::{error, info};
 
 use super::ToolExecutor;
@@ -22,11 +23,12 @@ use crate::tools::ToolRegistry;
 
 pub struct SubAgentDispatcherTool {
     agent_registry: Arc<AgentPluginRegistry>,
+    app: Option<AppHandle>,
 }
 
 impl SubAgentDispatcherTool {
-    pub fn new(agent_registry: Arc<AgentPluginRegistry>) -> Self {
-        Self { agent_registry }
+    pub fn new(agent_registry: Arc<AgentPluginRegistry>, app: Option<AppHandle>) -> Self {
+        Self { agent_registry, app }
     }
 }
 
@@ -166,7 +168,20 @@ impl ToolExecutor for SubAgentDispatcherTool {
 
         // 5. Create a child ToolRegistry (without sub-agent dispatching to prevent recursion)
         let child_tools = Arc::new(ToolRegistry::new_without_subagents());
-        let child_tool_defs = child_tools.get_tool_definitions();
+        let all_child_defs = child_tools.get_tool_definitions();
+
+        // Filter child tool definitions according to sub-agent's activated_tools configuration
+        let child_tool_defs: Vec<ToolDefinition> = all_child_defs
+            .into_iter()
+            .filter(|def| is_tool_allowed_for_agent(&def.name, &plugin.activated_tools))
+            .collect();
+
+        info!(
+            "SubAgentDispatcher: Scoped '{}' tools: {:?} (filtered from {} total native definitions)",
+            subagent_id,
+            child_tool_defs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
+            child_tools.get_tool_definitions().len()
+        );
 
         // 6. Create a scoped budget for the sub-agent
         let mut child_budget = ExecutionBudget::for_subagent();
@@ -175,7 +190,7 @@ impl ToolExecutor for SubAgentDispatcherTool {
 
         // 7. Run the child runtime to completion
         let result = AgentExecutionRuntime::run_loop(
-            None, // Headless — no Tauri events for child runtimes
+            self.app.as_ref(), // Propagate app handle for telemetry emission
             0,    // Task ID for sub-agent runs
             llm_client.as_ref(),
             &child_system_prompt,
@@ -222,4 +237,115 @@ impl ToolExecutor for SubAgentDispatcherTool {
             }
         }
     }
+}
+
+/// Dynamic scoping check: Determines if a native tool definition should be exposed
+/// to a sub-agent runtime based on the sub-agent's `activated_tools` configuration profile.
+fn is_tool_allowed_for_agent(tool_name: &str, activated_tools: &[String]) -> bool {
+    // If activated_tools is empty or contains wildcard "*", allow all tools
+    if activated_tools.is_empty()
+        || activated_tools
+            .iter()
+            .any(|t| t == "*" || t.eq_ignore_ascii_case("all"))
+    {
+        return true;
+    }
+
+    // 1. Direct match (case-insensitive)
+    if activated_tools
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case(tool_name))
+    {
+        return true;
+    }
+
+    // 2. Category / Synonym matching
+    let name_lower = tool_name.to_lowercase();
+    for tool in activated_tools {
+        let t_lower = tool.to_lowercase();
+
+        // Filesystem tools
+        if matches!(
+            name_lower.as_str(),
+            "read_file"
+                | "write_file"
+                | "list_directory"
+                | "delete_file"
+                | "file_info"
+                | "create_directory"
+        ) {
+            if t_lower.starts_with("file_management_")
+                || t_lower.contains("code analysis")
+                || t_lower.contains("development workspace")
+                || t_lower.contains("file management")
+                || t_lower.contains("filesystem")
+                || t_lower == "files"
+                || t_lower == "file"
+                || t_lower.contains(&name_lower)
+            {
+                return true;
+            }
+        }
+
+        // Browser tools
+        if matches!(
+            name_lower.as_str(),
+            "browser_navigate"
+                | "browser_click"
+                | "browser_type"
+                | "browser_screenshot"
+                | "browser_extract_text"
+        ) {
+            if t_lower.starts_with("browser_")
+                || t_lower == "playwright"
+                || t_lower.contains("browser")
+                || t_lower.contains("web research")
+                || t_lower.contains("social publishing")
+                || t_lower.contains(&name_lower)
+            {
+                return true;
+            }
+        }
+
+        // Web Search / Fetch tools
+        if matches!(name_lower.as_str(), "web_search" | "browser_open_url") {
+            if t_lower.contains("web_search")
+                || t_lower.contains("google_search")
+                || t_lower.contains("exa_search")
+                || t_lower.contains("scrapestack")
+                || t_lower.contains("browser_open_url")
+                || t_lower.contains("web research")
+                || t_lower.contains("search")
+                || t_lower.contains("research")
+                || t_lower.contains(&name_lower)
+            {
+                return true;
+            }
+        }
+
+        // Email tools
+        if name_lower == "send_email" {
+            if t_lower.contains("send_email")
+                || t_lower.contains("gmail")
+                || t_lower.contains("email drafting")
+                || t_lower.contains("email")
+            {
+                return true;
+            }
+        }
+
+        // Calendar tools
+        if name_lower == "create_calendar_event" {
+            if t_lower.contains("calendar")
+                || t_lower.contains("calendly")
+                || t_lower.contains("calendar access")
+                || t_lower.contains("scheduling")
+                || t_lower.contains("schedule")
+            {
+                return true;
+            }
+        }
+    }
+
+    false
 }

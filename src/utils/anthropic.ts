@@ -1,19 +1,20 @@
+// @ts-ignore
 import Anthropic from '@anthropic-ai/sdk';
 
-let anthropicClient: Anthropic | null = null;
+let anthropicClient: any = null;
 
-export function initAnthropicClient(apiKey: string): Anthropic {
-  anthropicClient = new Anthropic({ apiKey });
+export function initAnthropicClient(apiKey: string): any {
+  anthropicClient = new (Anthropic as any)({ apiKey });
   return anthropicClient;
 }
 
-export function getAnthropicClient(): Anthropic {
+export function getAnthropicClient(): any {
   if (!anthropicClient) {
     const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
     if (!apiKey) {
       throw new Error('Anthropic API key not configured');
     }
-    anthropicClient = new Anthropic({ apiKey });
+    anthropicClient = new (Anthropic as any)({ apiKey });
   }
   return anthropicClient;
 }
@@ -31,6 +32,7 @@ export async function sendMessage(
     messages,
   });
 
-  const textContent = response.content.find(c => c.type === 'text');
+  const textContent = response.content.find((c: { type: string; text?: string }) => c.type === 'text');
   return textContent && textContent.type === 'text' ? textContent.text : '';
 }
+

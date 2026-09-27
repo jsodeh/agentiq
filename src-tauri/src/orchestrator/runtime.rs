@@ -151,6 +151,69 @@ impl AgentExecutionRuntime {
         parent_task_id: Option<i64>,
         db_pool: Option<&crate::database::DbPool>,
     ) -> Result<RuntimeResult, AppError> {
+        let res = Self::run_loop_inner(
+            app,
+            task_id,
+            llm_client,
+            system_prompt,
+            chat_messages,
+            tool_registry,
+            tool_definitions,
+            model,
+            budget,
+            suspension_registry,
+            parent_task_id,
+            db_pool,
+        )
+        .await;
+
+        if let Err(ref err) = res {
+            if let Some(app_handle) = app {
+                let err_msg = err.to_string();
+                let mut payload = json!({
+                    "taskId": task_id,
+                    "error": err_msg.clone(),
+                    "message": format!("Task execution failed: {}", err_msg)
+                });
+                if let Some(pid) = parent_task_id {
+                    payload["parentTaskId"] = json!(pid);
+                }
+                let _ = app_handle.emit("task_failed", payload.clone());
+                let _ = app_handle.emit("action_failed", payload);
+            }
+
+            if let Some(pool) = db_pool {
+                if let Ok(conn) = pool.get() {
+                    let _ = crate::database::queries::Queries::save_runtime_execution(
+                        &conn,
+                        task_id,
+                        "Failed",
+                        budget.current_turns as i64,
+                        budget.current_tokens as i64,
+                        None,
+                        Some(&err.to_string()),
+                    );
+                }
+            }
+        }
+
+        res
+    }
+
+    async fn run_loop_inner(
+        app: Option<&AppHandle>,
+        task_id: i64,
+        llm_client: &dyn LlmClient,
+        system_prompt: &str,
+        chat_messages: &mut Vec<ChatMessage>,
+        tool_registry: &Arc<ToolRegistry>,
+        tool_definitions: &[ToolDefinition],
+        model: &str,
+        budget: &mut ExecutionBudget,
+        suspension_registry: Option<&Arc<SuspensionRegistry>>,
+        parent_task_id: Option<i64>,
+        db_pool: Option<&crate::database::DbPool>,
+    ) -> Result<RuntimeResult, AppError> {
 
         let mut final_content = String::new();
         let mut executed_any_tools = false;

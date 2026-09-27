@@ -37,7 +37,7 @@ impl OrchestratorEngine {
             is_running: Arc::new(AtomicBool::new(false)),
             event_bus,
             queue: TaskQueue::new(),
-            tools: Arc::new(ToolRegistry::new(agent_registry.clone())),
+            tools: Arc::new(ToolRegistry::new(agent_registry.clone(), None)),
             agent_registry,
         }
     }

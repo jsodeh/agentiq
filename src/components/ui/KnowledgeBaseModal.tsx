@@ -25,7 +25,7 @@ export function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps)
 
   // Form state
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('brand_guidelines');
+  const [category, setCategory] = useState('uncategorized');
   const [tags, setTags] = useState('');
   const [content, setContent] = useState('');
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -55,15 +55,26 @@ export function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps)
       return;
     }
 
-    try {
-      await invoke('add_knowledge_item', {
-        title: title.trim(),
-        content: content.trim(),
-        category,
-        tags: tags.trim() || null,
-      });
+    const fileName = `${title.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}.md`;
 
-      setStatusMsg('Knowledge item saved successfully!');
+    try {
+      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        await invoke('upload_knowledge_document', {
+          fileName,
+          content: content.trim(),
+          category,
+          tags: tags.trim() || null,
+        });
+      } else {
+        await invoke('add_knowledge_item', {
+          title: title.trim(),
+          content: content.trim(),
+          category,
+          tags: tags.trim() || null,
+        });
+      }
+
+      setStatusMsg('Document saved & indexed for RAG successfully!');
       setTitle('');
       setContent('');
       setTags('');
@@ -72,10 +83,11 @@ export function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps)
 
       setTimeout(() => setStatusMsg(null), 3000);
     } catch (err) {
-      console.error('Error adding knowledge item:', err);
-      setStatusMsg('Failed to save item.');
+      console.error('Error adding knowledge document:', err);
+      setStatusMsg('Failed to save document.');
     }
   };
+
 
   const handleDelete = async (id: number) => {
     try {
@@ -248,6 +260,7 @@ export function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps)
                         onChange={(e) => setCategory(e.target.value)}
                         className="w-full rounded-lg border border-white/10 bg-[#282828] px-3 py-2 text-xs text-white outline-none focus:border-brand"
                       >
+                        <option value="uncategorized">Uncategorized / General</option>
                         <option value="brand_guidelines">Brand Guidelines</option>
                         <option value="product_catalog">Product Catalog / Specs</option>
                         <option value="faq">Customer FAQs</option>

@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { 
   Bot, 
   Brain, 
   Check, 
   Cpu, 
+  ExternalLink,
   Globe, 
   Key, 
   Lock, 
+  Plug,
   Save, 
+  Search,
   Settings2, 
   ShieldCheck, 
   Sparkles, 
@@ -38,8 +42,100 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
+interface IntegrationService {
+  id: string;
+  name: string;
+  category: string;
+  credentialKey: string;
+  placeholder: string;
+  description: string;
+  actionsCount: number;
+  devConsoleUrl: string;
+}
+
+const INTEGRATION_SERVICES: IntegrationService[] = [
+  // --- Communication ---
+  { id: 'slack',           name: 'Slack',                  category: 'Communication',    credentialKey: 'bot_token',            placeholder: 'xoxb-... (Bot User OAuth Token)',            description: 'Post messages, send channel notifications, and trigger alerts.',             actionsCount: 24, devConsoleUrl: 'https://api.slack.com/apps' },
+  { id: 'gmail',           name: 'Google Gmail',           category: 'Communication',    credentialKey: 'oauth_token',          placeholder: 'OAuth2 Client Credentials JSON...',          description: 'Draft, search, and send emails via Gmail API.',                             actionsCount: 26, devConsoleUrl: 'https://console.cloud.google.com/apis/credentials' },
+  { id: 'outlook_mail',   name: 'Outlook Mail',           category: 'Communication',    credentialKey: 'access_token',         placeholder: 'Graph API Access Token...',                  description: 'Manage Microsoft 365 Outlook inbox and drafts.',                           actionsCount: 21, devConsoleUrl: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade' },
+  { id: 'zoom',            name: 'Zoom',                   category: 'Communication',    credentialKey: 'jwt_token',            placeholder: 'Server-to-Server OAuth Token...',            description: 'Schedule video meetings and fetch call recordings.',                       actionsCount: 16, devConsoleUrl: 'https://marketplace.zoom.us/develop/create' },
+  { id: 'microsoft_teams', name: 'Microsoft Teams',        category: 'Communication',    credentialKey: 'bot_token',            placeholder: 'Graph API / Bot Token...',                   description: 'Post channel notifications and team chat alerts.',                          actionsCount: 18, devConsoleUrl: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade' },
+  { id: 'google_meet',    name: 'Google Meet',            category: 'Communication',    credentialKey: 'api_token',            placeholder: 'GCP OAuth2 Credentials...',                  description: 'Generate meeting links and manage video sessions.',                         actionsCount: 9,  devConsoleUrl: 'https://console.cloud.google.com/apis/credentials' },
+
+  // --- Development ---
+  { id: 'github',          name: 'GitHub',                 category: 'Development',      credentialKey: 'access_token',         placeholder: 'ghp_... (Classic Personal Access Token)',    description: 'Create issues, review pull requests, and query repository files.',         actionsCount: 38, devConsoleUrl: 'https://github.com/settings/tokens/new' },
+  { id: 'linear',          name: 'Linear',                 category: 'Development',      credentialKey: 'api_key',              placeholder: 'lin_api_...',                                description: 'Create and track software issues, cycles, and roadmap tasks.',             actionsCount: 19, devConsoleUrl: 'https://linear.app/settings/api' },
+  { id: 'gitlab',          name: 'GitLab',                 category: 'Development',      credentialKey: 'private_token',        placeholder: 'glpat-... (Personal Access Token)',          description: 'Query repos, merge requests, and CI/CD pipeline triggers.',                actionsCount: 29, devConsoleUrl: 'https://gitlab.com/-/profile/personal_access_tokens' },
+  { id: 'bitbucket',       name: 'Bitbucket',              category: 'Development',      credentialKey: 'app_password',         placeholder: 'App Password...',                            description: 'Manage code repositories and pull requests.',                               actionsCount: 15, devConsoleUrl: 'https://bitbucket.org/account/settings/app-passwords/new' },
+
+  // --- Project Management ---
+  { id: 'asana',           name: 'Asana',                  category: 'Project Mgmt',     credentialKey: 'personal_token',       placeholder: '1/120... (Personal Access Token)',           description: 'Manage task boards, project sections, and team assignments.',              actionsCount: 22, devConsoleUrl: 'https://app.asana.com/0/my-apps' },
+  { id: 'notion',          name: 'Notion',                 category: 'Project Mgmt',     credentialKey: 'integration_token',    placeholder: 'secret_... (Internal Integration Token)',    description: 'Read/write database pages, docs, and knowledge bases.',                   actionsCount: 16, devConsoleUrl: 'https://www.notion.so/my-integrations' },
+  { id: 'trello',          name: 'Trello',                 category: 'Project Mgmt',     credentialKey: 'api_key',              placeholder: 'Key & Token pair...',                        description: 'Automate Kanban cards, lists, and board workflows.',                       actionsCount: 14, devConsoleUrl: 'https://trello.com/app-key' },
+  { id: 'jira',            name: 'Jira',                   category: 'Project Mgmt',     credentialKey: 'api_token',            placeholder: 'ATATT3... (Atlassian API Token)',            description: 'Query backlog, create epics, and update issue statuses.',                  actionsCount: 31, devConsoleUrl: 'https://id.atlassian.com/manage-profile/security/api-tokens' },
+  { id: 'clickup',         name: 'ClickUp',                category: 'Project Mgmt',     credentialKey: 'api_token',            placeholder: 'pk_... (Personal API Key)',                  description: 'Synchronize tasks, goals, and team workload spaces.',                      actionsCount: 20, devConsoleUrl: 'https://app.clickup.com/settings/apps' },
+  { id: 'monday',          name: 'Monday.com',             category: 'Project Mgmt',     credentialKey: 'api_token',            placeholder: 'eyJhbG... (V2 API Token)',                   description: 'Query boards, items, and status updates.',                                  actionsCount: 18, devConsoleUrl: 'https://auth.monday.com/user/api_tokens' },
+  { id: 'basecamp',        name: 'Basecamp',               category: 'Project Mgmt',     credentialKey: 'access_token',         placeholder: 'OAuth Access Token...',                      description: 'Track to-dos, message boards, and project check-ins.',                    actionsCount: 12, devConsoleUrl: 'https://launchpad.37signals.com/integrations' },
+
+  // --- Scheduling ---
+  { id: 'google_calendar', name: 'Google Calendar',        category: 'Scheduling',       credentialKey: 'api_token',            placeholder: 'GCP OAuth2 Credentials...',                  description: 'Create events, check availability, and schedule meetings.',                actionsCount: 17, devConsoleUrl: 'https://console.cloud.google.com/apis/credentials' },
+  { id: 'outlook_calendar',name: 'Outlook Calendar',       category: 'Scheduling',       credentialKey: 'access_token',         placeholder: 'Graph API Access Token...',                  description: 'Manage Outlook calendar events and invites.',                               actionsCount: 15, devConsoleUrl: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade' },
+  { id: 'calendly',        name: 'Calendly',               category: 'Scheduling',       credentialKey: 'api_token',            placeholder: 'cal_... (Personal Access Token)',            description: 'Automate booking queries, availability checks, and meeting links.',       actionsCount: 11, devConsoleUrl: 'https://calendly.com/integrations/api_subscriptions' },
+
+  // --- Databases ---
+  { id: 'postgres',        name: 'PostgreSQL',             category: 'Databases',        credentialKey: 'connection_string',    placeholder: 'postgresql://user:pass@host:5432/db',        description: 'Query SQL tables, schema metadata, and perform data reads.',               actionsCount: 42, devConsoleUrl: 'https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING' },
+  { id: 'sqlite',          name: 'SQLite',                 category: 'Databases',        credentialKey: 'db_path',              placeholder: '/path/to/database.db',                       description: 'Local lightweight database queries and inspections.',                       actionsCount: 35, devConsoleUrl: 'https://www.sqlite.org/docs.html' },
+  { id: 'airtable',        name: 'Airtable',               category: 'Databases',        credentialKey: 'api_key',              placeholder: 'pat... (Personal Access Token)',             description: 'Query relational grid bases, views, and record rows.',                    actionsCount: 23, devConsoleUrl: 'https://airtable.com/create/tokens' },
+  { id: 'mongodb',         name: 'MongoDB',                category: 'Databases',        credentialKey: 'uri',                  placeholder: 'mongodb+srv://user:pass@cluster.mongodb.net',description: 'Query document collections and JSON stores.',                               actionsCount: 33, devConsoleUrl: 'https://cloud.mongodb.com/v2#/org//settings/publicApi' },
+  { id: 'redis',           name: 'Redis',                  category: 'Databases',        credentialKey: 'connection_url',       placeholder: 'redis://:password@host:6379',                description: 'Key-value store, caching, and pub/sub message queues.',                    actionsCount: 21, devConsoleUrl: 'https://redis.io/docs/ui/insight/' },
+  { id: 'supabase',        name: 'Supabase',               category: 'Databases',        credentialKey: 'service_role_key',     placeholder: 'eyJh... (Service Role Key)',                 description: 'Manage PostgreSQL, Auth, and Storage buckets.',                            actionsCount: 40, devConsoleUrl: 'https://supabase.com/dashboard/project/_/settings/api' },
+
+  // --- Storage ---
+  { id: 'google_drive',   name: 'Google Drive',           category: 'Storage',          credentialKey: 'api_token',            placeholder: 'OAuth2 / Service Account Key JSON...',      description: 'Access workspace files, PDFs, and spreadsheet docs.',                     actionsCount: 27, devConsoleUrl: 'https://console.cloud.google.com/apis/credentials' },
+  { id: 'aws_s3',         name: 'AWS S3',                 category: 'Storage',          credentialKey: 'access_key',           placeholder: 'AKIA... (Access Key ID)',                    description: 'Upload/download cloud storage bucket files.',                               actionsCount: 30, devConsoleUrl: 'https://console.aws.amazon.com/iam/home#/security_credentials' },
+  { id: 'dropbox',         name: 'Dropbox',                category: 'Storage',          credentialKey: 'access_token',         placeholder: 'sl.B... (OAuth Access Token)',               description: 'Sync file assets, documents, and shared folders.',                         actionsCount: 19, devConsoleUrl: 'https://www.dropbox.com/developers/apps/create' },
+  { id: 'box',             name: 'Box',                    category: 'Storage',          credentialKey: 'access_token',         placeholder: 'Developer Token...',                         description: 'Manage enterprise document storage and security.',                          actionsCount: 17, devConsoleUrl: 'https://app.box.com/developers/console' },
+
+  // --- Analytics ---
+  { id: 'snowflake',       name: 'Snowflake',              category: 'Analytics',        credentialKey: 'account_url',          placeholder: 'account.snowflakecomputing.com',             description: 'Run cloud data warehouse SQL analytics queries.',                           actionsCount: 28, devConsoleUrl: 'https://app.snowflake.com' },
+  { id: 'bigquery',        name: 'BigQuery',               category: 'Analytics',        credentialKey: 'credentials_json',     placeholder: 'GCP Service Account JSON...',                description: 'Execute massive analytical dataset queries.',                               actionsCount: 32, devConsoleUrl: 'https://console.cloud.google.com/iam-admin/serviceaccounts' },
+  { id: 'segment',         name: 'Segment',                category: 'Analytics',        credentialKey: 'write_key',            placeholder: 'Write Key...',                               description: 'Track customer event pipelines and data routing.',                          actionsCount: 13, devConsoleUrl: 'https://app.segment.com/goto-my-workspace/sources/catalog' },
+  { id: 'mixpanel',        name: 'Mixpanel',               category: 'Analytics',        credentialKey: 'service_account_secret',placeholder: 'Service Account Secret...',                description: 'Query product analytics, funnels, and retention reports.',                  actionsCount: 22, devConsoleUrl: 'https://mixpanel.com/settings/project#serviceaccounts' },
+  { id: 'posthog',         name: 'PostHog',                category: 'Analytics',        credentialKey: 'api_key',              placeholder: 'phx_... (Personal API Key)',                 description: 'Query event funnels, session recordings, and feature flags.',              actionsCount: 26, devConsoleUrl: 'https://us.posthog.com/settings/user-api-keys' },
+  { id: 'google_analytics',name: 'Google Analytics 4',    category: 'Analytics',        credentialKey: 'credentials_json',     placeholder: 'GCP Service Account Credentials JSON...',   description: 'Fetch website traffic, conversion events, and user demographics.',         actionsCount: 24, devConsoleUrl: 'https://console.cloud.google.com/iam-admin/serviceaccounts' },
+
+  // --- Finance ---
+  { id: 'stripe',          name: 'Stripe',                 category: 'Finance',          credentialKey: 'secret_key',           placeholder: 'sk_live_... or sk_test_...',                 description: 'Query customer subscriptions, charges, and invoices.',                     actionsCount: 34, devConsoleUrl: 'https://dashboard.stripe.com/apikeys' },
+  { id: 'quickbooks',      name: 'QuickBooks',             category: 'Finance',          credentialKey: 'access_token',         placeholder: 'OAuth Access Token...',                      description: 'Track invoices, expense receipts, and financial reports.',                 actionsCount: 25, devConsoleUrl: 'https://developer.intuit.com/app/developer/dashboard' },
+
+  // --- CRM & Sales ---
+  { id: 'hubspot',         name: 'HubSpot',                category: 'CRM & Sales',      credentialKey: 'access_token',         placeholder: 'pat-na1-... (Private App Token)',            description: 'Query CRM contacts, deals, companies, and tickets.',                       actionsCount: 36, devConsoleUrl: 'https://app.hubspot.com/private-apps' },
+  { id: 'salesforce',      name: 'Salesforce',             category: 'CRM & Sales',      credentialKey: 'access_token',         placeholder: 'OAuth Session Token...',                     description: 'Manage leads, opportunities, and enterprise CRM data.',                    actionsCount: 45, devConsoleUrl: 'https://login.salesforce.com' },
+
+  // --- Marketing ---
+  { id: 'mailchimp',       name: 'Mailchimp',              category: 'Marketing',        credentialKey: 'api_key',              placeholder: 'key-usX (API Key)',                          description: 'Manage subscriber lists, campaigns, and newsletters.',                     actionsCount: 18, devConsoleUrl: 'https://admin.mailchimp.com/account/api/' },
+
+  // --- Commerce ---
+  { id: 'shopify',         name: 'Shopify',                category: 'Commerce',         credentialKey: 'access_token',         placeholder: 'shpat_... (Admin API Access Token)',         description: 'Query orders, product catalog, and customer records.',                     actionsCount: 37, devConsoleUrl: 'https://www.shopify.com/partners' },
+
+  // --- Customer Support ---
+  { id: 'intercom',        name: 'Intercom',               category: 'Customer Support', credentialKey: 'access_token',         placeholder: 'dG9rOi... (Access Token)',                   description: 'Fetch support tickets, user conversations, and FAQs.',                    actionsCount: 22, devConsoleUrl: 'https://developers.intercom.com/building-apps/docs/authentication' },
+  { id: 'zendesk',         name: 'Zendesk',                category: 'Customer Support', credentialKey: 'api_token',            placeholder: 'user@domain.com/token:...',                  description: 'Query support tickets, user profiles, and help center articles.',          actionsCount: 28, devConsoleUrl: 'https://support.zendesk.com/hc/en-us/articles/4408889192858-Generating-a-new-API-token' },
+  { id: 'freshdesk',       name: 'Freshdesk',              category: 'Customer Support', credentialKey: 'api_key',              placeholder: 'API Key...',                                 description: 'Manage customer support tickets and agent dispatch.',                       actionsCount: 20, devConsoleUrl: 'https://support.freshdesk.com/en/support/solutions/articles/215517' },
+
+  // --- Social ---
+  { id: 'linkedin',        name: 'LinkedIn',               category: 'Social',           credentialKey: 'access_token',         placeholder: 'OAuth Access Token...',                      description: 'Post company updates and query professional network profiles.',             actionsCount: 14, devConsoleUrl: 'https://www.linkedin.com/developers/apps/new' },
+  { id: 'twitter_x',      name: 'X (Twitter)',            category: 'Social',           credentialKey: 'bearer_token',         placeholder: 'Bearer Token...',                            description: 'Post tweets, monitor mentions, and run social analytics.',                 actionsCount: 19, devConsoleUrl: 'https://developer.x.com/en/portal/keys-and-tokens' },
+  { id: 'discord',         name: 'Discord',                category: 'Social',           credentialKey: 'bot_token',            placeholder: 'MTA... (Bot Token)',                         description: 'Post announcements, send channel embeds, and manage roles.',               actionsCount: 24, devConsoleUrl: 'https://discord.com/developers/applications' },
+  { id: 'telegram',        name: 'Telegram Bot',           category: 'Social',           credentialKey: 'bot_token',            placeholder: '123456789:ABCdef... (Bot Token)',            description: 'Send automated group messages, alerts, and bot triggers.',                 actionsCount: 16, devConsoleUrl: 'https://t.me/BotFather' },
+  { id: 'whatsapp',        name: 'WhatsApp Business',      category: 'Social',           credentialKey: 'access_token',         placeholder: 'EAAG... (Meta Graph API Token)',             description: 'Send template messages and customer notifications.',                        actionsCount: 15, devConsoleUrl: 'https://developers.facebook.com/apps/' },
+];
+
+// Derived ordered list of unique categories
+const INTEGRATION_CATEGORIES = ['All', ...Array.from(new Set(INTEGRATION_SERVICES.map(s => s.category)))];
+
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<'models' | 'agents' | 'tools' | 'profile'>('models');
+  const [activeTab, setActiveTab] = useState<'models' | 'agents' | 'tools' | 'integrations' | 'profile'>('models');
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -55,6 +151,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [showGeminiKey, setShowGeminiKey] = useState(false);
+
+  // Integrations State & Setup Modal State
+  const [connectedServices, setConnectedServices] = useState<string[]>([]);
+  const [activeSetupService, setActiveSetupService] = useState<IntegrationService | null>(null);
+  const [setupTokenInput, setSetupTokenInput] = useState<string>('');
+  const [integrationSearch, setIntegrationSearch] = useState('');
+  const [integrationCategory, setIntegrationCategory] = useState('All');
 
   // Agent behaviors state
   const [selectedAgent, setSelectedAgent] = useState<string>('lead-gen-maps');
@@ -76,9 +179,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const deploymentMode = localStorage.getItem('deployment_mode') || 'cloud';
   const subTier = localStorage.getItem('subscription_tier') || 'Free';
 
-  // Load existing config on mount
+  // Load user services from backend
+  const fetchUserServices = async () => {
+    try {
+      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        const services = await invoke<string[]>('list_user_services');
+        setConnectedServices(services || []);
+      }
+    } catch (err) {
+      console.warn('[Settings] Failed to fetch connected services:', err);
+    }
+  };
+
+  // Load existing config & services on mount / open
   useEffect(() => {
     if (!isOpen) return;
+
+    fetchUserServices();
 
     const loadConfig = async () => {
       setLoading(true);
@@ -93,7 +210,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             const oKey = cfg.models.openai_api_key || '';
             
             let provider = cfg.models.cloud_provider || 'anthropic';
-            // Auto-select Gemini if Gemini key is present but Anthropic key is empty
             if (provider === 'anthropic' && !anthKey && gKey) {
               provider = 'gemini';
             }
@@ -121,6 +237,66 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
     loadConfig();
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'integrations') {
+      fetchUserServices();
+    }
+  }, [isOpen, activeTab]);
+
+  const handleModalConnect = async (serviceId: string, credentialKey: string, rawToken: string) => {
+    const token = rawToken.trim();
+    if (!token) return;
+
+    setLoading(true);
+    setSaveError(null);
+    try {
+      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        await invoke('save_user_credential', {
+          serviceId,
+          credentialKey,
+          token,
+        });
+        await fetchUserServices();
+      } else {
+        setConnectedServices(prev => Array.from(new Set([...prev, serviceId])));
+      }
+
+      setActiveSetupService(null);
+      setSetupTokenInput('');
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      setSaveError(String(err));
+      setTimeout(() => setSaveError(null), 5000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisconnectService = async (serviceId: string, credentialKey: string) => {
+    setLoading(true);
+    setSaveError(null);
+    try {
+      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        await invoke('delete_user_credential', {
+          serviceId,
+          credentialKey,
+        });
+        await fetchUserServices();
+      } else {
+        // Mock fallback for non-tauri dev environment
+        setConnectedServices(prev => prev.filter(s => s !== serviceId));
+      }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      setSaveError(String(err));
+      setTimeout(() => setSaveError(null), 5000);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleCloudProviderChange = (provider: string) => {
     setCloudProvider(provider);
@@ -152,17 +328,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       }
     };
 
-    console.log('[Settings] Saving payload:', JSON.stringify(payload, (k, v) =>
-      k.includes('key') && v ? '***' : v
-    ));
-
     try {
       if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-        const result = await invoke('update_llm_config', payload);
-        console.log('[Settings] Save result:', result);
+        await invoke('update_llm_config', payload);
       }
 
-      // Persist in localStorage as well
       localStorage.setItem('deployment_mode', mode);
       localStorage.setItem('selected_model', mode === 'cloud' ? cloudModel : localModel);
 
@@ -181,7 +351,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
+    <>
+      <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -213,38 +384,47 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <nav className="space-y-1">
                 <button
                   onClick={() => setActiveTab('models')}
-                  className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-left rounded-xl transition-colors ${
                     activeTab === 'models' ? 'bg-brand text-white shadow-lg shadow-brand/20' : 'text-midGray hover:bg-white/5 hover:text-white'
                   }`}
                 >
-                  <Cpu className="size-4" /> AI Models &amp; Provider
+                  <Cpu className="size-4 shrink-0" /> AI Models &amp; Provider
                 </button>
 
                 <button
                   onClick={() => setActiveTab('agents')}
-                  className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-left rounded-xl transition-colors ${
                     activeTab === 'agents' ? 'bg-brand text-white shadow-lg shadow-brand/20' : 'text-midGray hover:bg-white/5 hover:text-white'
                   }`}
                 >
-                  <Bot className="size-4" /> Agent Behaviors
+                  <Bot className="size-4 shrink-0" /> Agent Behaviors
                 </button>
 
                 <button
                   onClick={() => setActiveTab('tools')}
-                  className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-left rounded-xl transition-colors ${
                     activeTab === 'tools' ? 'bg-brand text-white shadow-lg shadow-brand/20' : 'text-midGray hover:bg-white/5 hover:text-white'
                   }`}
                 >
-                  <Wrench className="size-4" /> Tools &amp; MCP
+                  <Wrench className="size-4 shrink-0" /> Tools &amp; MCP
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('integrations')}
+                  className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-left rounded-xl transition-colors ${
+                    activeTab === 'integrations' ? 'bg-brand text-white shadow-lg shadow-brand/20' : 'text-midGray hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <Plug className="size-4 shrink-0" /> Integrations &amp; Connections
                 </button>
 
                 <button
                   onClick={() => setActiveTab('profile')}
-                  className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  className={`flex w-full items-center gap-2 px-3 py-2.5 text-xs font-semibold text-left rounded-xl transition-colors ${
                     activeTab === 'profile' ? 'bg-brand text-white shadow-lg shadow-brand/20' : 'text-midGray hover:bg-white/5 hover:text-white'
                   }`}
                 >
-                  <User className="size-4" /> Profile &amp; Plan
+                  <User className="size-4 shrink-0" /> Profile &amp; Plan
                 </button>
               </nav>
             </div>
@@ -605,6 +785,132 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
+            {/* TAB: INTEGRATIONS & CONNECTIONS */}
+            {activeTab === 'integrations' && (() => {
+              const q = integrationSearch.toLowerCase().trim();
+              const filtered = INTEGRATION_SERVICES.filter(s => {
+                const matchesCategory = integrationCategory === 'All' || s.category === integrationCategory;
+                const matchesSearch = !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q) || s.description.toLowerCase().includes(q);
+                return matchesCategory && matchesSearch;
+              });
+              const connectedCount = connectedServices.length;
+
+              return (
+                <div className="space-y-4">
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Plug className="size-5 text-brand" /> Connections &amp; Integrations
+                      </h3>
+                      <p className="text-xs text-midGray mt-0.5">
+                        {connectedCount > 0 ? (
+                          <span><span className="text-emerald-400 font-semibold">{connectedCount}</span> service{connectedCount !== 1 ? 's' : ''} connected · </span>
+                        ) : null}
+                        Credentials are machine-seed encrypted.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Search bar */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-midGray pointer-events-none" />
+                    <input
+                      type="text"
+                      value={integrationSearch}
+                      onChange={e => setIntegrationSearch(e.target.value)}
+                      placeholder="Search integrations…"
+                      className="w-full rounded-xl border border-white/10 bg-black/40 pl-9 pr-4 py-2 text-xs text-white placeholder-midGray outline-none focus:border-brand transition-colors"
+                    />
+                    {integrationSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setIntegrationSearch('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-midGray hover:text-white"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Category tab strip */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {INTEGRATION_CATEGORIES.map(cat => {
+                      const count = cat === 'All'
+                        ? INTEGRATION_SERVICES.length
+                        : INTEGRATION_SERVICES.filter(s => s.category === cat).length;
+                      const active = integrationCategory === cat;
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setIntegrationCategory(cat)}
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition-all ${
+                            active
+                              ? 'bg-brand text-white shadow-sm shadow-brand/30'
+                              : 'bg-white/5 text-midGray border border-white/10 hover:bg-white/10 hover:text-white'
+                          }`}
+                        >
+                          {cat}
+                          <span className={`ml-1 opacity-60 text-[9px] ${active ? 'text-white' : ''}`}>{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Service grid */}
+                  {filtered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <Search className="size-8 text-white/10 mb-3" />
+                      <p className="text-sm font-semibold text-midGray">No integrations found</p>
+                      <p className="text-xs text-midGray/60 mt-1">Try adjusting your search or category filter</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      {filtered.map((service) => {
+                        const isConnected = connectedServices.includes(service.id);
+                        return (
+                          <div
+                            key={service.id}
+                            className={`rounded-xl border px-4 py-3 flex items-center justify-between transition-all ${
+                              isConnected
+                                ? 'border-brand/40 bg-brand/[0.04] shadow-sm shadow-brand/10'
+                                : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            <div className="space-y-0.5 pr-3 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-xs font-bold text-white tracking-tight truncate">{service.name}</h4>
+                                {isConnected && (
+                                  <span className="shrink-0 flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400 border border-emerald-500/20">
+                                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" /> Connected
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-midGray/70 font-medium">{service.actionsCount} actions</p>
+                            </div>
+                            {/* Toggle switch */}
+                            <button
+                              type="button"
+                              aria-label={isConnected ? `Configure ${service.name}` : `Connect ${service.name}`}
+                              onClick={() => { setActiveSetupService(service); setSetupTokenInput(''); }}
+                              className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full border transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                                isConnected ? 'border-brand/50 bg-brand' : 'border-white/20 bg-white/10'
+                              }`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                                isConnected ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                              }`} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* TAB 4: PROFILE & PLAN */}
             {activeTab === 'profile' && (
               <div className="space-y-6">
@@ -644,5 +950,121 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </motion.div>
       </div>
     </AnimatePresence>
-  );
+
+    {/* SETUP & ONBOARDING POPUP MODAL */}
+    <AnimatePresence>
+      {activeSetupService && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-white/15 bg-[#1a1a1a] p-6 text-white shadow-2xl space-y-5"
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setActiveSetupService(null)}
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-midGray transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <X className="size-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="grid size-10 place-items-center rounded-xl bg-brand/20 text-brand">
+                <Plug className="size-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">{activeSetupService.name}</h3>
+                  <span className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-midGray">
+                    {activeSetupService.category}
+                  </span>
+                </div>
+                <p className="text-xs text-midGray mt-0.5">{activeSetupService.description}</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-brand/20 bg-brand/5 p-3.5 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-white flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-brand" /> Capabilities &amp; Access
+                </span>
+                <span className="font-bold text-brand">{activeSetupService.actionsCount} Actions Unlocked</span>
+              </div>
+              <p className="text-[11px] text-midGray leading-relaxed">
+                Connecting {activeSetupService.name} grants AGENTIQ OS permissions to run automated tools over machine-seed encrypted MCP channels.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await openUrl(activeSetupService.devConsoleUrl);
+                  } catch (err) {
+                    console.warn('[Settings] openUrl failed, falling back to window.open:', err);
+                    window.open(activeSetupService.devConsoleUrl, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-brand hover:underline pt-1 text-left cursor-pointer"
+              >
+                Get your API key from {activeSetupService.name} Console <ExternalLink className="size-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-midGray">
+                {activeSetupService.credentialKey.toUpperCase().replace(/_/g, ' ')} / API TOKEN
+              </label>
+              <input
+                type="password"
+                value={setupTokenInput}
+                onChange={(e) => setSetupTokenInput(e.target.value)}
+                placeholder={activeSetupService.placeholder}
+                className="w-full rounded-xl border border-white/10 bg-black/60 px-3.5 py-2.5 text-xs text-white outline-none focus:border-brand font-mono"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-white/10">
+              {connectedServices.includes(activeSetupService.id) ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleDisconnectService(activeSetupService.id, activeSetupService.credentialKey);
+                    setActiveSetupService(null);
+                  }}
+                  disabled={loading}
+                  className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-50"
+                >
+                  Disconnect Service
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveSetupService(null)}
+                  className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-midGray transition-colors hover:bg-white/5 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!setupTokenInput.trim()) return;
+                    await handleModalConnect(activeSetupService.id, activeSetupService.credentialKey, setupTokenInput);
+                  }}
+                  disabled={loading || !setupTokenInput.trim()}
+                  className="rounded-xl bg-brand px-4 py-2 text-xs font-bold text-white transition-all hover:bg-brand/90 disabled:opacity-40 shadow-lg shadow-brand/20"
+                >
+                  {loading ? 'Authenticating…' : 'Save & Authenticate'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  </>
+);
 }

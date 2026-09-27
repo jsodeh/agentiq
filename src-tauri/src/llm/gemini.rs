@@ -63,11 +63,15 @@ impl LlmClient for GeminiClient {
                     }
                     if let Some(calls) = &msg.tool_calls {
                         for call in calls {
+                            let mut fc = json!({
+                                "name": call.name,
+                                "args": call.arguments
+                            });
+                            if let Some(ts) = &call.thought_signature {
+                                fc["thought_signature"] = ts.clone();
+                            }
                             parts.push(json!({
-                                "functionCall": {
-                                    "name": call.name,
-                                    "args": call.arguments
-                                }
+                                "functionCall": fc
                             }));
                         }
                     }
@@ -208,10 +212,18 @@ impl LlmClient for GeminiClient {
                         if let Some(fc) = part.get("functionCall") {
                             let name = fc["name"].as_str().unwrap_or("").to_string();
                             let args = fc["args"].clone();
+                            let thought_sig = fc.get("thought_signature")
+                                .or_else(|| fc.get("thoughtSignature"))
+                                .or_else(|| fc.get("thought"))
+                                .or_else(|| part.get("thought_signature"))
+                                .or_else(|| part.get("thoughtSignature"))
+                                .or_else(|| part.get("thought"))
+                                .cloned();
                             tool_calls.push(super::ToolCall {
                                 id: format!("gemini_call_{}", idx),
                                 name,
                                 arguments: args,
+                                thought_signature: thought_sig,
                             });
                         }
                     }

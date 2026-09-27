@@ -78,7 +78,7 @@ impl ReActEngine {
         let llm_client = create_llm_client(&provider, api_key, cfg.models.custom_endpoint.clone())?;
 
         // 3. Prepare Tools and System Prompt
-        let tool_registry = Arc::new(ToolRegistry::new(agent_registry.clone()));
+        let tool_registry = Arc::new(ToolRegistry::new(agent_registry.clone(), Some(app.clone())));
         let tool_definitions = tool_registry.get_tool_definitions();
         let system_prompt = MasterOrchestrator::build_hydrated_system_prompt(pool, agent_registry, "default");
 

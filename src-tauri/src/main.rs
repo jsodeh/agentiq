@@ -57,6 +57,27 @@ fn main() {
         agent_registry.clone(),
     );
 
+    // Auto-provision workspace directories on boot
+    let base_dir = std::env::current_dir().unwrap_or_default();
+    let workspace_dir = base_dir.join("workspace");
+    for dir_name in &["company_knowledge", "reports", "templates"] {
+        let path = workspace_dir.join(dir_name);
+        if !path.exists() {
+            if let Ok(_) = std::fs::create_dir_all(&path) {
+                info!("Auto-provisioned workspace directory: {}", path.display());
+            }
+        }
+    }
+
+    // Async RAG Engine Warming: pre-download/cache embedding model on boot in background thread
+    let warm_workspace_dir = workspace_dir.clone();
+    tauri::async_runtime::spawn(async move {
+        let rag_engine = orchestrator::rag::LocalRagEngine::new(warm_workspace_dir);
+        let _ = tokio::task::spawn_blocking(move || {
+            let _ = rag_engine.get_or_init_model();
+        }).await;
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
@@ -136,6 +157,7 @@ fn main() {
             commands::database::add_knowledge_item,
             commands::database::delete_knowledge_item,
             commands::database::search_knowledge_items,
+            commands::database::upload_knowledge_document,
             commands::database::get_all_profiles,
             commands::database::switch_profile,
             commands::database::create_profile,
@@ -143,9 +165,13 @@ fn main() {
             commands::database::mark_inbox_read,
             commands::database::get_team_members,
             commands::database::add_team_member,
+            commands::database::save_user_credential,
+            commands::database::delete_user_credential,
+            commands::database::list_user_services,
             commands::chat::send_chat_message,
             commands::chat::resolve_suspension,
             commands::chat::get_pending_suspensions,
+
 
             // System & setup commands
             commands::system::check_ollama,

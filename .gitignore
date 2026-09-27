@@ -26,6 +26,9 @@ dist-ssr
 # Tauri
 src-tauri/target
 src-tauri/Cargo.lock
+src-tauri/.fastembed_cache
+.fastembed_cache
+workspace/
 
 # Database
 *.db

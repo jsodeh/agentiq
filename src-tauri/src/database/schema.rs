@@ -15,6 +15,9 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     migrate_tasks_table(conn)?;
     migrate_runtime_executions_table(conn)?;
 
+    // Credential storage for dynamic MCP service injection
+    crate::orchestrator::credentials::migrate_credentials_table(conn)?;
+
     Ok(())
 }
 

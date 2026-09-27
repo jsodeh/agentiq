@@ -6,10 +6,12 @@ pub mod subagent_dispatcher;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use tauri::AppHandle;
 
 use crate::agents::AgentPluginRegistry;
 use crate::errors::AppError;
 use crate::llm::ToolDefinition;
+use crate::orchestrator::tiers::{EntitlementGuard, UserTier};
 
 #[async_trait]
 pub trait ToolExecutor: Send + Sync {
@@ -21,18 +23,20 @@ pub trait ToolExecutor: Send + Sync {
 
 pub struct ToolRegistry {
     executors: Vec<Arc<dyn ToolExecutor>>,
+    entitlement_guard: parking_lot::Mutex<EntitlementGuard>,
 }
 
 impl ToolRegistry {
     /// Create a full registry with all tools including the sub-agent dispatcher.
-    pub fn new(agent_registry: Arc<AgentPluginRegistry>) -> Self {
+    pub fn new(agent_registry: Arc<AgentPluginRegistry>, app: Option<AppHandle>) -> Self {
         Self {
             executors: vec![
                 Arc::new(filesystem::FilesystemTool::new()),
                 Arc::new(browser::BrowserTool::new()),
                 Arc::new(mcp::McpTool::new()),
-                Arc::new(subagent_dispatcher::SubAgentDispatcherTool::new(agent_registry)),
+                Arc::new(subagent_dispatcher::SubAgentDispatcherTool::new(agent_registry, app)),
             ],
+            entitlement_guard: parking_lot::Mutex::new(EntitlementGuard::new(UserTier::Free)),
         }
     }
 
@@ -45,7 +49,13 @@ impl ToolRegistry {
                 Arc::new(browser::BrowserTool::new()),
                 Arc::new(mcp::McpTool::new()),
             ],
+            entitlement_guard: parking_lot::Mutex::new(EntitlementGuard::new(UserTier::Free)),
         }
+    }
+
+    /// Update the user tier at runtime (e.g., after login or subscription change).
+    pub fn set_tier(&self, tier: UserTier) {
+        self.entitlement_guard.lock().current_tier = tier;
     }
 
     pub fn get_tool_definitions(&self) -> Vec<ToolDefinition> {
@@ -57,6 +67,14 @@ impl ToolRegistry {
     }
 
     pub async fn execute_tool(&self, tool_name: &str, params: Value) -> Result<Value, AppError> {
+        // ── Tier Entitlement Gate ────────────────────────────────────────
+        // Check the user's tier BEFORE dispatching to any executor.
+        // If a free-tier user invokes a premium-only tool, halt immediately.
+        {
+            let guard = self.entitlement_guard.lock();
+            guard.check_tool_access(tool_name)?;
+        }
+
         for executor in &self.executors {
             if executor.can_handle(tool_name) {
                 return executor.execute(tool_name, params).await;
@@ -68,3 +86,4 @@ impl ToolRegistry {
         })
     }
 }
+

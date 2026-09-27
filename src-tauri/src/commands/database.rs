@@ -205,3 +205,91 @@ pub fn add_team_member(
     Ok(id)
 }
 
+#[tauri::command]
+pub fn save_user_credential(
+    pool: State<'_, DbPool>,
+    service_id: String,
+    credential_key: String,
+    token: String,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    crate::orchestrator::credentials::save_credential(&conn, &service_id, &credential_key, &token)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_user_credential(
+    pool: State<'_, DbPool>,
+    service_id: String,
+    credential_key: String,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    crate::orchestrator::credentials::delete_credential(&conn, &service_id, &credential_key)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_user_services(
+    pool: State<'_, DbPool>,
+) -> Result<Vec<String>, AppError> {
+    let conn = pool.get()?;
+    let services = crate::orchestrator::credentials::list_connected_services(&conn)?;
+    Ok(services)
+}
+
+#[tauri::command]
+pub fn upload_knowledge_document(
+    pool: State<'_, DbPool>,
+    file_name: String,
+    content: String,
+    category: Option<String>,
+    tags: Option<String>,
+) -> Result<i64, AppError> {
+    let safe_filename = file_name
+        .replace("..", "")
+        .replace('/', "_")
+        .replace('\\', "_");
+    
+    let base_workspace = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("workspace")
+        .join("company_knowledge");
+
+    std::fs::create_dir_all(&base_workspace).map_err(|e| AppError::ToolExecution {
+        tool: "knowledge".to_string(),
+        message: format!("Failed to create company_knowledge directory: {}", e),
+    })?;
+
+    let file_path = base_workspace.join(&safe_filename);
+    std::fs::write(&file_path, &content).map_err(|e| AppError::ToolExecution {
+        tool: "knowledge".to_string(),
+        message: format!("Failed to write knowledge document to disk: {}", e),
+    })?;
+
+    let conn = pool.get()?;
+    let title = safe_filename
+        .replace(".md", "")
+        .replace(".txt", "")
+        .replace(".csv", "");
+    let cat = category.unwrap_or_else(|| "general".to_string());
+    let id = crate::database::knowledge::KnowledgeQueries::add_item(
+        &conn,
+        &title,
+        &content,
+        &cat,
+        tags.as_deref(),
+    )?;
+
+    let workspace_root = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("workspace");
+    std::thread::spawn(move || {
+        let rag_engine = crate::orchestrator::rag::LocalRagEngine::new(&workspace_root);
+        let _ = rag_engine.reindex();
+    });
+
+    Ok(id)
+}
+
+
+

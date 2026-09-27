@@ -189,6 +189,7 @@ impl LlmClient for OpenAiClient {
                     id,
                     name,
                     arguments: args,
+                    thought_signature: None,
                 });
             }
         }

@@ -181,6 +181,7 @@ impl LlmClient for AnthropicClient {
                         id,
                         name,
                         arguments: args,
+                        thought_signature: None,
                     });
                 }
             }

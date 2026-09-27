@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+// @ts-ignore
 import { CronJob } from 'cron';
 
 export interface AgentBudget {

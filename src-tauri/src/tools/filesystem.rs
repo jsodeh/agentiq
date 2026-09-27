@@ -68,6 +68,39 @@ impl ToolExecutor for FilesystemTool {
                     "required": ["path"]
                 }),
             },
+            crate::llm::ToolDefinition {
+                name: "delete_file".to_string(),
+                description: "Delete a file at the specified path within the workspace boundary.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "File path to delete" }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            crate::llm::ToolDefinition {
+                name: "file_info".to_string(),
+                description: "Get metadata for a file or directory at the specified path (size, type, etc.).".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "File or directory path to inspect" }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            crate::llm::ToolDefinition {
+                name: "create_directory".to_string(),
+                description: "Create a directory structure at the specified path.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Directory path to create" }
+                    },
+                    "required": ["path"]
+                }),
+            },
         ]
     }
 

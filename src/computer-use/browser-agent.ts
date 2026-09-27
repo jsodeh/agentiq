@@ -1,3 +1,4 @@
+// @ts-ignore
 import { chromium, Browser, Page, BrowserContext } from 'playwright';
 import { invoke } from '@tauri-apps/api/core';
 import { appDataDir } from '@tauri-apps/api/path';

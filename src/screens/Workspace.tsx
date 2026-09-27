@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode, useMemo, useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { BoltStyleChat, type WorkspaceMessage, type SubAgentLogEntry } from '../components/ui/bolt-style-chat';
+import { BoltStyleChat, type WorkspaceMessage, type SubAgentLogEntry, type ApprovalData } from '../components/ui/bolt-style-chat';
 import { getOrchestratorClient } from '../lib/orchestrator-client';
 
 type TaskPreparation = { agent_id: string; agent_name: string; activated_tools: string[]; task_id: string; };
@@ -167,21 +167,22 @@ function WorkspaceContent() {
           console.log('[Workspace] Action awaiting approval:', tool, approvalId);
           setWorkingText('Awaiting security authorization…');
 
+          const approvalData: ApprovalData = {
+            approvalId,
+            tool: tool || 'unknown_tool',
+            params,
+            description: description || `Agent requests approval to execute '${tool}'`,
+            status: 'pending',
+          };
+
           setMessages((current) => {
             const activeMsgId = `task-run-${taskId}`;
             const existing = current.find((m) => m.id === activeMsgId);
-            const approvalData = {
-              approvalId,
-              tool: tool || 'unknown_tool',
-              params,
-              description: description || `Agent requests approval to execute '${tool}'`,
-              status: 'pending' as const,
-            };
 
             if (existing) {
               return current.map((m) =>
                 m.id === activeMsgId
-                  ? { ...m, approvalRequest: approvalData }
+                  ? { ...m, approvalRequests: [...(m.approvalRequests || []), approvalData] }
                   : m
               );
             } else {
@@ -191,7 +192,7 @@ function WorkspaceContent() {
                   id: activeMsgId,
                   role: 'assistant',
                   content: '',
-                  approvalRequest: approvalData,
+                  approvalRequests: [approvalData],
                 },
               ];
             }
@@ -282,12 +283,38 @@ function WorkspaceContent() {
       })
     );
 
-    // Listen for action failed
+    // Listen for action failed — with premium upgrade interception
     unlistenPromises.push(
       listen<AgentEvent>('action_failed', (event) => {
         const { taskId, tool, error } = event.payload;
         if (!isCurrentContext(taskId)) return;
         console.error('[Workspace] Action failed:', tool, error);
+
+        // ── Tier Upgrade Interception ────────────────────────────────
+        // If the error payload starts with "UPGRADE_REQUIRED", suppress
+        // the generic error bubble and render a premium upgrade banner.
+        const errorStr = typeof error === 'string' ? error : String(error);
+        if (errorStr.startsWith('UPGRADE_REQUIRED')) {
+          setMessages((current) => [
+            ...current,
+            {
+              id: `upgrade-${taskId}-${Date.now()}`,
+              role: 'assistant',
+              content: [
+                '✨ **Unlock Premium Capabilities**\n\n',
+                `This agent persona requires a **Premium upgrade** to execute \`${tool}\`.\n\n`,
+                '> 🔒 High-impact automation, browser control, email/calendar write access, ',
+                'and advanced integrations are available on the **Premium Tier**.\n\n',
+                '**[Upgrade Now →](/settings/billing)**',
+              ].join(''),
+              meta: 'Premium Required',
+            },
+          ]);
+          setIsWorking(false);
+          return;
+        }
+
+        // Standard error handling (non-upgrade errors)
         setMessages((current) => {
           const activeMsgId = `task-run-${taskId}`;
           return current.map((m) => {
@@ -360,21 +387,22 @@ function WorkspaceContent() {
               } catch (_) {}
               const approvalId = `approval-${taskId}-recovered`;
 
+              const approvalData: ApprovalData = {
+                approvalId,
+                tool,
+                params,
+                description: `Recovered session: Agent requests approval to execute '${tool}'`,
+                status: 'pending',
+              };
+
               setMessages((current) => {
                 const activeMsgId = `task-run-${taskId}`;
                 const existing = current.find((m) => m.id === activeMsgId);
-                const approvalData = {
-                  approvalId,
-                  tool,
-                  params,
-                  description: `Recovered session: Agent requests approval to execute '${tool}'`,
-                  status: 'pending' as const,
-                };
 
                 if (existing) {
                   return current.map((m) =>
                     m.id === activeMsgId
-                      ? { ...m, approvalRequest: approvalData }
+                      ? { ...m, approvalRequests: [...(m.approvalRequests || []), approvalData] }
                       : m
                   );
                 } else {
@@ -384,7 +412,7 @@ function WorkspaceContent() {
                       id: activeMsgId,
                       role: 'assistant',
                       content: 'Execution suspended awaiting human approval (recovered session).',
-                      approvalRequest: approvalData,
+                      approvalRequests: [approvalData],
                     },
                   ];
                 }
@@ -411,14 +439,18 @@ function WorkspaceContent() {
 
       setMessages((current) =>
         current.map((m) => {
-          if (m.approvalRequest && m.approvalRequest.approvalId === approvalId) {
-            return {
-              ...m,
-              approvalRequest: {
-                ...m.approvalRequest,
-                status: approved ? 'approved' : 'denied',
-              },
-            };
+          if (m.approvalRequests) {
+            const hasTarget = m.approvalRequests.some((a) => a.approvalId === approvalId);
+            if (hasTarget) {
+              return {
+                ...m,
+                approvalRequests: m.approvalRequests.map((a) =>
+                  a.approvalId === approvalId
+                    ? { ...a, status: approved ? 'approved' as const : 'denied' as const }
+                    : a
+                ),
+              };
+            }
           }
           return m;
         })

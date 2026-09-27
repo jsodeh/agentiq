@@ -1,4 +1,5 @@
 pub mod context;
+pub mod credentials;
 pub mod engine;
 pub mod escalation;
 pub mod events;
@@ -8,7 +9,10 @@ pub mod parser;
 pub mod queue;
 pub mod react_engine;
 pub mod runtime;
+pub mod rag;
 pub mod suspension;
+pub mod tiers;
+
 
 use parking_lot::Mutex;
 use std::sync::Arc;
