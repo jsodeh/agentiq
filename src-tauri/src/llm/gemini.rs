@@ -30,8 +30,8 @@ impl LlmClient for GeminiClient {
     async fn generate(&self, request: &LlmRequest) -> Result<LlmResponse, AppError> {
         let start = Instant::now();
 
-        let model = if request.model.is_empty() || request.model == "gemini-1.5-flash" || request.model == "gemini-2.5-flash" {
-            "gemini-3.6-flash".to_string()
+        let model = if request.model.is_empty() || request.model == "gemini-1.5-flash" || request.model == "gemini-2.5-flash" || request.model == "gemini-3.6-flash" || request.model == "gemini-2.0-flash" {
+            "gemini-3.8-flash".to_string()
         } else {
             request.model.clone()
         };
@@ -264,8 +264,8 @@ impl LlmClient for GeminiClient {
         use async_stream::try_stream;
         use futures::StreamExt;
 
-        let model = if request.model.is_empty() || request.model == "gemini-1.5-flash" || request.model == "gemini-2.5-flash" {
-            "gemini-3.6-flash".to_string()
+        let model = if request.model.is_empty() || request.model == "gemini-1.5-flash" || request.model == "gemini-2.5-flash" || request.model == "gemini-3.6-flash" || request.model == "gemini-2.0-flash" {
+            "gemini-3.8-flash".to_string()
         } else {
             request.model.clone()
         };
