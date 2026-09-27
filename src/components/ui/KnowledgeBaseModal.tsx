@@ -58,14 +58,14 @@ export function KnowledgeBaseModal({ isOpen, onClose }: KnowledgeBaseModalProps)
     const fileName = `${title.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}.md`;
 
     try {
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      try {
         await invoke('upload_knowledge_document', {
           fileName,
           content: content.trim(),
           category,
           tags: tags.trim() || null,
         });
-      } else {
+      } catch {
         await invoke('add_knowledge_item', {
           title: title.trim(),
           content: content.trim(),

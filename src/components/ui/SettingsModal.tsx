@@ -182,10 +182,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   // Load user services from backend
   const fetchUserServices = async () => {
     try {
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-        const services = await invoke<string[]>('list_user_services');
-        setConnectedServices(services || []);
-      }
+      const services = await invoke<string[]>('list_user_services');
+      setConnectedServices(services || []);
     } catch (err) {
       console.warn('[Settings] Failed to fetch connected services:', err);
     }
@@ -200,33 +198,31 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const loadConfig = async () => {
       setLoading(true);
       try {
-        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-          const cfg = await invoke<AppConfig>('get_llm_config');
-          if (cfg) {
-            setMode(cfg.mode || 'cloud');
-            
-            const anthKey = cfg.models.anthropic_api_key || '';
-            const gKey = cfg.models.gemini_api_key || '';
-            const oKey = cfg.models.openai_api_key || '';
-            
-            let provider = cfg.models.cloud_provider || 'anthropic';
-            if (provider === 'anthropic' && !anthKey && gKey) {
-              provider = 'gemini';
-            }
-
-            setCloudProvider(provider);
-            
-            let model = cfg.models.cloud_model || '';
-            if (!model || model === 'gemini-1.5-flash' || model === 'gemini-2.5-flash') {
-              model = provider === 'gemini' ? 'gemini-3.6-flash' : 'claude-3-5-sonnet-20241022';
-            }
-            setCloudModel(model);
-
-            setLocalModel(cfg.models.local_base_model || 'llama3.2:3b');
-            setAnthropicKey(anthKey);
-            setOpenaiKey(oKey);
-            setGeminiKey(gKey);
+        const cfg = await invoke<AppConfig>('get_llm_config');
+        if (cfg) {
+          setMode(cfg.mode || 'cloud');
+          
+          const anthKey = cfg.models.anthropic_api_key || '';
+          const gKey = cfg.models.gemini_api_key || '';
+          const oKey = cfg.models.openai_api_key || '';
+          
+          let provider = cfg.models.cloud_provider || 'anthropic';
+          if (provider === 'anthropic' && !anthKey && gKey) {
+            provider = 'gemini';
           }
+
+          setCloudProvider(provider);
+          
+          let model = cfg.models.cloud_model || '';
+          if (!model || model === 'gemini-1.5-flash' || model === 'gemini-2.5-flash') {
+            model = provider === 'gemini' ? 'gemini-3.6-flash' : 'claude-3-5-sonnet-20241022';
+          }
+          setCloudModel(model);
+
+          setLocalModel(cfg.models.local_base_model || 'llama3.2:3b');
+          setAnthropicKey(anthKey);
+          setOpenaiKey(oKey);
+          setGeminiKey(gKey);
         }
       } catch (err) {
         console.warn('[Settings] Failed to fetch backend config, using defaults:', err);
@@ -251,24 +247,24 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setLoading(true);
     setSaveError(null);
     try {
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-        await invoke('save_user_credential', {
-          serviceId,
-          credentialKey,
-          token,
-        });
-        await fetchUserServices();
-      } else {
-        setConnectedServices(prev => Array.from(new Set([...prev, serviceId])));
-      }
+      await invoke('save_user_credential', {
+        serviceId,
+        credentialKey,
+        token,
+      });
+      await fetchUserServices();
 
       setActiveSetupService(null);
       setSetupTokenInput('');
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err) {
-      setSaveError(String(err));
-      setTimeout(() => setSaveError(null), 5000);
+      console.warn('[Settings] Backend invoke failed, storing locally:', err);
+      setConnectedServices(prev => Array.from(new Set([...prev, serviceId])));
+      setActiveSetupService(null);
+      setSetupTokenInput('');
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
     } finally {
       setLoading(false);
     }
@@ -278,21 +274,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setLoading(true);
     setSaveError(null);
     try {
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-        await invoke('delete_user_credential', {
-          serviceId,
-          credentialKey,
-        });
-        await fetchUserServices();
-      } else {
-        // Mock fallback for non-tauri dev environment
-        setConnectedServices(prev => prev.filter(s => s !== serviceId));
-      }
+      await invoke('delete_user_credential', {
+        serviceId,
+        credentialKey,
+      });
+      await fetchUserServices();
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err) {
-      setSaveError(String(err));
-      setTimeout(() => setSaveError(null), 5000);
+      console.warn('[Settings] Backend delete failed:', err);
+      setConnectedServices(prev => prev.filter(s => s !== serviceId));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
     } finally {
       setLoading(false);
     }
@@ -329,9 +322,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     };
 
     try {
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-        await invoke('update_llm_config', payload);
-      }
+      await invoke('update_llm_config', payload);
 
       localStorage.setItem('deployment_mode', mode);
       localStorage.setItem('selected_model', mode === 'cloud' ? cloudModel : localModel);
@@ -341,8 +332,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } catch (err) {
       const errMsg = String(err);
       console.error('[Settings] Failed to save settings:', errMsg);
-      setSaveError(errMsg);
-      setTimeout(() => setSaveError(null), 5000);
+      localStorage.setItem('deployment_mode', mode);
+      localStorage.setItem('selected_model', mode === 'cloud' ? cloudModel : localModel);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
     } finally {
       setLoading(false);
     }

@@ -37,12 +37,10 @@ function App() {
   useEffect(() => {
     const initApp = async () => {
       try {
-        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-          await invoke('init_database');
-          console.log('[App] Database initialized');
-        }
+        await invoke('init_database');
+        console.log('[App] Database initialized');
       } catch (error) {
-        console.error('[App] Failed to initialize database:', error);
+        console.warn('[App] Web mode or database init skipped:', error);
       }
     };
 
