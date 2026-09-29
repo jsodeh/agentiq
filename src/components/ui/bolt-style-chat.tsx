@@ -1,4 +1,70 @@
-import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { Component, type ReactNode, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+class MarkdownErrorBoundary extends Component<{ children: ReactNode; fallback: string }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: any) { console.error('[MarkdownErrorBoundary] Failed to render markdown:', err); }
+  render() {
+    if (this.state.hasError) {
+      return <div className="whitespace-pre-wrap">{this.props.fallback}</div>;
+    }
+    return this.props.children;
+  }
+}
+
+const gfmPlugin = typeof remarkGfm === 'function' ? remarkGfm : (remarkGfm as any)?.default || remarkGfm;
+
+const markdownComponents = {
+  table: ({ children }: any) => (
+    <div className="my-3 overflow-x-auto rounded-xl border border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.02]">
+      <table className="w-full text-left border-collapse text-xs">
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children }: any) => (
+    <thead className="border-b border-black/10 bg-black/5 dark:border-white/10 dark:bg-white/5 font-semibold text-gray-700 dark:text-gray-200">
+      {children}
+    </thead>
+  ),
+  tbody: ({ children }: any) => (
+    <tbody className="divide-y divide-black/5 dark:divide-white/5 text-gray-800 dark:text-gray-300">
+      {children}
+    </tbody>
+  ),
+  tr: ({ children }: any) => (
+    <tr className="hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors">
+      {children}
+    </tr>
+  ),
+  th: ({ children }: any) => (
+    <th className="px-3 py-2 text-xs font-semibold text-gray-900 dark:text-white">
+      {children}
+    </th>
+  ),
+  td: ({ children }: any) => (
+    <td className="px-3 py-2 text-xs text-gray-700 dark:text-gray-300">
+      {children}
+    </td>
+  ),
+  ul: ({ children }: any) => (
+    <ul className="my-2 ml-4 list-disc space-y-1 text-gray-800 dark:text-gray-200">
+      {children}
+    </ul>
+  ),
+  ol: ({ children }: any) => (
+    <ol className="my-2 ml-4 list-decimal space-y-1 text-gray-800 dark:text-gray-200">
+      {children}
+    </ol>
+  ),
+  li: ({ children }: any) => (
+    <li className="text-xs leading-relaxed">
+      {children}
+    </li>
+  ),
+};
 import { Bot, Brain, CheckCircle2, ChevronDown, Lightbulb, Paperclip, Plus, SendHorizontal, ShieldAlert, Sparkles, XCircle, Zap } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { WorkspaceBottomMenu, WorkspaceSidebar } from './workspace-navigation';
@@ -215,12 +281,22 @@ export function BoltStyleChat({
                         </span>
                       </div>
 
-                      <div className={`text-[13px] leading-relaxed whitespace-pre-wrap ${
+                      <div className={`text-[13px] leading-relaxed ${
                         isError      ? 'text-red-600 dark:text-red-300' :
                         isThinking   ? 'text-cyan-700 italic dark:text-cyan-200' :
                         'text-[#1a1a1e] dark:text-[#e4e4e7]'
                       }`}>
-                        {message.content}
+                        {message.role === 'assistant' && !isThinking ? (
+                          <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed prose-headings:text-[14px] prose-headings:font-bold prose-headings:mt-2 prose-headings:mb-1 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-table:my-2 prose-table:w-full prose-table:border-collapse prose-td:border prose-td:border-gray-200/60 dark:prose-td:border-zinc-700/60 prose-td:p-2 prose-td:text-[12px] prose-th:border prose-th:border-gray-200/60 dark:prose-th:border-zinc-700/60 prose-th:p-2 prose-th:text-[12px] prose-th:bg-zinc-100 dark:prose-th:bg-zinc-800/60 prose-th:font-semibold">
+                            <MarkdownErrorBoundary fallback={message.content || ''}>
+                              <ReactMarkdown remarkPlugins={[gfmPlugin]} components={markdownComponents}>
+                                {message.content || ''}
+                              </ReactMarkdown>
+                            </MarkdownErrorBoundary>
+                          </div>
+                        ) : (
+                          <div className="whitespace-pre-wrap">{message.content}</div>
+                        )}
                       </div>
 
                       {/* Stacked Tool Call Section UI Component */}

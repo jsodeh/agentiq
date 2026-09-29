@@ -43,8 +43,9 @@ impl SkillsCatalog {
                 if !kb_items.is_empty() {
                     catalog.push_str("## BUSINESS KNOWLEDGE BASE DOCUMENTS\n");
                     for item in kb_items.iter().take(10) {
-                        let snippet = if item.content.len() > 150 {
-                            format!("{}...", &item.content[..150])
+                        let snippet = if item.content.chars().count() > 150 {
+                            let truncated: String = item.content.chars().take(150).collect();
+                            format!("{}...", truncated)
                         } else {
                             item.content.clone()
                         };

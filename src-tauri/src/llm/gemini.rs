@@ -63,16 +63,18 @@ impl LlmClient for GeminiClient {
                     }
                     if let Some(calls) = &msg.tool_calls {
                         for call in calls {
-                            let mut fc = json!({
-                                "name": call.name,
-                                "args": call.arguments
+                            let mut part_obj = json!({
+                                "functionCall": {
+                                    "name": call.name,
+                                    "args": call.arguments
+                                }
                             });
                             if let Some(ts) = &call.thought_signature {
-                                fc["thought_signature"] = ts.clone();
+                                part_obj["thought_signature"] = ts.clone();
+                            } else {
+                                part_obj["thought_signature"] = json!("skip");
                             }
-                            parts.push(json!({
-                                "functionCall": fc
-                            }));
+                            parts.push(part_obj);
                         }
                     }
                     if !parts.is_empty() {
@@ -205,6 +207,24 @@ impl LlmClient for GeminiClient {
         if let Some(candidates) = res_json["candidates"].as_array() {
             if let Some(first) = candidates.first() {
                 if let Some(parts) = first["content"]["parts"].as_array() {
+                    let mut shared_thought_sig = first.get("thoughtSignature")
+                        .or_else(|| first.get("thought_signature"))
+                        .or_else(|| res_json.get("thoughtSignature"))
+                        .or_else(|| res_json.get("thought_signature"))
+                        .cloned();
+
+                    if shared_thought_sig.is_none() {
+                        for part in parts {
+                            if let Some(ts) = part.get("thoughtSignature")
+                                .or_else(|| part.get("thought_signature"))
+                                .or_else(|| part.get("thought"))
+                            {
+                                shared_thought_sig = Some(ts.clone());
+                                break;
+                            }
+                        }
+                    }
+
                     for (idx, part) in parts.iter().enumerate() {
                         if let Some(t) = part["text"].as_str() {
                             text_content.push_str(t);
@@ -218,7 +238,8 @@ impl LlmClient for GeminiClient {
                                 .or_else(|| part.get("thought_signature"))
                                 .or_else(|| part.get("thoughtSignature"))
                                 .or_else(|| part.get("thought"))
-                                .cloned();
+                                .cloned()
+                                .or_else(|| shared_thought_sig.clone());
                             tool_calls.push(super::ToolCall {
                                 id: format!("gemini_call_{}", idx),
                                 name,

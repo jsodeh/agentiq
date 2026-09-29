@@ -143,11 +143,12 @@ export function ToolCallsSection({
       call.tool_category || "general",
       { width: size, height: size },
       getIconUrl(call),
+      call.tool_name,
     );
     return (
       icon || (
-        <div className="p-1 min-w-8 min-h-8 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-zinc-600 dark:text-zinc-400 backdrop-blur">
-          <HugeiconsIcon icon={ToolsIcon} size={size} />
+        <div className="p-1 w-7 h-7 max-w-7 max-h-7 shrink-0 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-zinc-600 dark:text-zinc-400 backdrop-blur flex items-center justify-center">
+          <HugeiconsIcon icon={ToolsIcon} size={14} className="w-4 h-4 shrink-0" />
         </div>
       )
     );
@@ -241,7 +242,7 @@ export function ToolCallsSection({
               >
                 {/* Icon column with connector line */}
                 <div className="flex flex-col items-center self-stretch">
-                  <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
+                  <div className="w-7 h-7 max-w-7 max-h-7 shrink-0 flex items-center justify-center">
                     {iconRenderer(call, iconSize)}
                   </div>
                   {index < toolCalls.length - 1 && (

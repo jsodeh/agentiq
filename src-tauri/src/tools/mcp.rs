@@ -83,6 +83,9 @@ impl McpProcessHandle {
         // Look up user-stored credentials for this service and inject them
         // as process environment variables so the MCP server authenticates
         // with the user's actual accounts (Slack, Gmail, Calendly, etc.)
+        let mut slack_bot_token = None;
+        let mut slack_team_id = None;
+
         if let Some(pool) = db_pool {
             if let Ok(conn) = pool.get() {
                 let env_mappings = crate::orchestrator::credentials::get_env_var_mapping(server_id);
@@ -93,6 +96,11 @@ impl McpProcessHandle {
                                 "Injecting credential env var '{}' for MCP server '{}'",
                                 env_var, server_id
                             );
+                            if *env_var == "SLACK_BOT_TOKEN" {
+                                slack_bot_token = Some(decrypted_token.clone());
+                            } else if *env_var == "SLACK_TEAM_ID" {
+                                slack_team_id = Some(decrypted_token.clone());
+                            }
                             cmd.env(env_var, &decrypted_token);
                         }
                         Ok(None) => {
@@ -109,6 +117,33 @@ impl McpProcessHandle {
                         }
                     }
                 }
+            }
+        }
+
+        // Special auto-resolution for Slack: if SLACK_TEAM_ID is missing, resolve it via auth.test API
+        if server_id == "slack" && slack_team_id.is_none() {
+            if let Some(token) = &slack_bot_token {
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(5))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new());
+                if let Ok(resp) = client
+                    .post("https://slack.com/api/auth.test")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .send()
+                    .await
+                {
+                    if let Ok(json_val) = resp.json::<Value>().await {
+                        if let Some(tid) = json_val.get("team_id").and_then(|v| v.as_str()) {
+                            info!("Auto-resolved Slack team_id '{}' via auth.test", tid);
+                            cmd.env("SLACK_TEAM_ID", tid);
+                            slack_team_id = Some(tid.to_string());
+                        }
+                    }
+                }
+            }
+            if slack_team_id.is_none() {
+                cmd.env("SLACK_TEAM_ID", "T0000000000");
             }
         }
 
@@ -280,8 +315,22 @@ impl McpProcessHandle {
     }
 
     pub async fn call_tool(&mut self, tool_name: &str, arguments: Value) -> Result<Value, AppError> {
+        let actual_name = if self.discovered_tools.iter().any(|t| t.name == tool_name) {
+            tool_name.to_string()
+        } else if let Some(stripped) = tool_name.strip_prefix(&format!("{}_", self.server_id)) {
+            if self.discovered_tools.iter().any(|t| t.name == stripped) {
+                stripped.to_string()
+            } else {
+                tool_name.to_string()
+            }
+        } else if let Some(first_match) = self.discovered_tools.iter().find(|t| t.name.contains(tool_name) || tool_name.contains(&t.name)) {
+            first_match.name.clone()
+        } else {
+            tool_name.to_string()
+        };
+
         let params = json!({
-            "name": tool_name,
+            "name": actual_name,
             "arguments": arguments
         });
 
@@ -385,6 +434,10 @@ impl ToolExecutor for McpTool {
 
     fn can_handle(&self, tool_name: &str) -> bool {
         tool_name.starts_with("mcp_")
+            || tool_name.starts_with("slack_")
+            || tool_name.starts_with("github_")
+            || tool_name.starts_with("gmail_")
+            || tool_name.starts_with("linear_")
             || matches!(
                 tool_name,
                 "composio"
@@ -461,6 +514,151 @@ impl ToolExecutor for McpTool {
                         "notes": { "type": "string", "description": "Optional notes or details" }
                     },
                     "required": ["title", "start_time"]
+                }),
+            },
+            ToolDefinition {
+                name: "slack_list_channels".to_string(),
+                description: "List all public or private channels in the user's connected Slack workspace.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "types": { "type": "string", "description": "Optional comma-separated channel types: public_channel, private_channel (default: public_channel)" }
+                    }
+                }),
+            },
+            ToolDefinition {
+                name: "slack_post_message".to_string(),
+                description: "Post a chat message to a specified Slack channel.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "channel_id": { "type": "string", "description": "Slack channel ID or channel name" },
+                        "text": { "type": "string", "description": "Message text content to post" }
+                    },
+                    "required": ["channel_id", "text"]
+                }),
+            },
+            ToolDefinition {
+                name: "slack_get_channel_history".to_string(),
+                description: "Retrieve recent message history from a specified Slack channel.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "channel_id": { "type": "string", "description": "Slack channel ID" },
+                        "limit": { "type": "integer", "description": "Maximum number of messages to fetch (default: 20)" }
+                    },
+                    "required": ["channel_id"]
+                }),
+            },
+            ToolDefinition {
+                name: "slack_get_users".to_string(),
+                description: "List users and members in the connected Slack workspace.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            },
+
+            // --- GitHub ---
+            ToolDefinition {
+                name: "github_create_issue".to_string(),
+                description: "Create a new issue on a GitHub repository.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "owner": { "type": "string", "description": "Repository owner / organization" },
+                        "repo": { "type": "string", "description": "Repository name" },
+                        "title": { "type": "string", "description": "Issue title" },
+                        "body": { "type": "string", "description": "Issue body content" }
+                    },
+                    "required": ["owner", "repo", "title"]
+                }),
+            },
+            ToolDefinition {
+                name: "github_list_issues".to_string(),
+                description: "List open issues on a GitHub repository.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "owner": { "type": "string", "description": "Repository owner / organization" },
+                        "repo": { "type": "string", "description": "Repository name" }
+                    },
+                    "required": ["owner", "repo"]
+                }),
+            },
+
+            // --- Gmail ---
+            ToolDefinition {
+                name: "gmail_send_email".to_string(),
+                description: "Send an email message via connected Gmail account.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "to": { "type": "string", "description": "Recipient email address" },
+                        "subject": { "type": "string", "description": "Subject line" },
+                        "body": { "type": "string", "description": "Email body content" }
+                    },
+                    "required": ["to", "subject", "body"]
+                }),
+            },
+
+            // --- Linear ---
+            ToolDefinition {
+                name: "linear_create_issue".to_string(),
+                description: "Create a new issue in Linear project tracker.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string", "description": "Issue title" },
+                        "description": { "type": "string", "description": "Issue details / description" },
+                        "team_id": { "type": "string", "description": "Optional team ID or name" }
+                    },
+                    "required": ["title"]
+                }),
+            },
+
+            // --- Notion ---
+            ToolDefinition {
+                name: "notion_create_page".to_string(),
+                description: "Create a new page in a Notion database or workspace.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "parent_id": { "type": "string", "description": "Page or database ID" },
+                        "title": { "type": "string", "description": "Page title" },
+                        "content": { "type": "string", "description": "Page content" }
+                    },
+                    "required": ["parent_id", "title"]
+                }),
+            },
+
+            // --- Jira ---
+            ToolDefinition {
+                name: "jira_create_issue".to_string(),
+                description: "Create an issue or ticket in Jira.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "project_key": { "type": "string", "description": "Jira project key (e.g. PROJ)" },
+                        "summary": { "type": "string", "description": "Issue summary title" },
+                        "issue_type": { "type": "string", "description": "Issue type (e.g. Task, Bug, Story)" }
+                    },
+                    "required": ["project_key", "summary"]
+                }),
+            },
+
+            // --- Google Calendar ---
+            ToolDefinition {
+                name: "google_calendar_create_event".to_string(),
+                description: "Create an event on Google Calendar.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "summary": { "type": "string", "description": "Event title" },
+                        "start_time": { "type": "string", "description": "ISO start time string" },
+                        "end_time": { "type": "string", "description": "ISO end time string" }
+                    },
+                    "required": ["summary", "start_time", "end_time"]
                 }),
             },
         ]
@@ -553,8 +751,9 @@ impl ToolExecutor for McpTool {
                     Ok(resp) => {
                         let text = resp.text().await.unwrap_or_default();
                         let cleaned = clean_html_entities(&text);
-                        let content = if cleaned.len() > 8000 {
-                            format!("{}... [truncated]", &cleaned[..8000])
+                        let content = if cleaned.chars().count() > 8000 {
+                            let truncated: String = cleaned.chars().take(8000).collect();
+                            format!("{}... [truncated]", truncated)
                         } else {
                             cleaned
                         };
@@ -574,12 +773,30 @@ impl ToolExecutor for McpTool {
             _ => {}
         }
 
+        let target_service = if clean_name.starts_with("slack_") || clean_name == "slack" {
+            "slack"
+        } else if clean_name.starts_with("github_") || clean_name == "github" {
+            "github"
+        } else if clean_name.starts_with("gmail_") || clean_name == "gmail" {
+            "gmail"
+        } else if clean_name.starts_with("linear_") || clean_name == "linear" {
+            "linear"
+        } else if clean_name.starts_with("notion_") || clean_name == "notion" {
+            "notion"
+        } else if clean_name.starts_with("jira_") || clean_name == "jira" {
+            "jira"
+        } else {
+            clean_name
+        };
+
+        let db_pool = crate::database::init_pool().ok();
+
         // 2. Check if active stdio MCP server handles this tool
         let mut servers_guard = self.servers.lock().await;
 
-        // Try executing on any already running MCP server handle that contains this tool
+        // Try executing on any already running MCP server handle that matches target_service or tool name
         for (server_id, handle) in servers_guard.iter_mut() {
-            if handle.discovered_tools.iter().any(|t| t.name == clean_name) {
+            if server_id == target_service || handle.discovered_tools.iter().any(|t| t.name == clean_name) {
                 info!("Routing '{}' to active stdio MCP server '{}'", clean_name, server_id);
                 match handle.call_tool(clean_name, params.clone()).await {
                     Ok(res) => return Ok(res),
@@ -590,20 +807,33 @@ impl ToolExecutor for McpTool {
             }
         }
 
-        // 3. Auto-spawn MCP server if service manifest matches clean_name
-        if let Some(config) = self.manifests.get(clean_name) {
+        // 3. Auto-spawn MCP server if service manifest matches target_service
+        if let Some(config) = self.manifests.get(target_service) {
             let args_ref: Vec<&str> = config.args.iter().map(|s| s.as_str()).collect();
-            match McpProcessHandle::spawn(clean_name, &config.command, &args_ref, None).await {
+            match McpProcessHandle::spawn(target_service, &config.command, &args_ref, db_pool.as_ref()).await {
                 Ok(mut new_handle) => {
-                    info!("Auto-spawned MCP service server '{}'", clean_name);
+                    info!("Auto-spawned MCP service server '{}'", target_service);
                     let call_res = new_handle.call_tool(clean_name, params.clone()).await;
-                    servers_guard.insert(clean_name.to_string(), new_handle);
-                    if let Ok(res) = call_res {
-                        return Ok(res);
+                    servers_guard.insert(target_service.to_string(), new_handle);
+                    match call_res {
+                        Ok(res) => return Ok(res),
+                        Err(e) => {
+                            return Ok(json!({
+                                "status": "error",
+                                "tool": clean_name,
+                                "service": target_service,
+                                "error": format!("MCP server execution error: {}", e)
+                            }));
+                        }
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to auto-spawn MCP service '{}': {}", clean_name, e);
+                    return Ok(json!({
+                        "status": "error",
+                        "tool": clean_name,
+                        "service": target_service,
+                        "error": format!("Failed to spawn MCP server '{}': {}", target_service, e)
+                    }));
                 }
             }
         }

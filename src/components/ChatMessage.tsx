@@ -2,6 +2,58 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AlertTriangle, FileText, Image as ImageIcon, Music, Video, File } from 'lucide-react';
+
+const gfmPlugin = typeof remarkGfm === 'function' ? remarkGfm : (remarkGfm as any)?.default || remarkGfm;
+
+const markdownComponents = {
+  table: ({ children }: any) => (
+    <div className="my-3 overflow-x-auto rounded-xl border border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.02]">
+      <table className="w-full text-left border-collapse text-xs">
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children }: any) => (
+    <thead className="border-b border-black/10 bg-black/5 dark:border-white/10 dark:bg-white/5 font-semibold text-gray-700 dark:text-gray-200">
+      {children}
+    </thead>
+  ),
+  tbody: ({ children }: any) => (
+    <tbody className="divide-y divide-black/5 dark:divide-white/5 text-gray-800 dark:text-gray-300">
+      {children}
+    </tbody>
+  ),
+  tr: ({ children }: any) => (
+    <tr className="hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-colors">
+      {children}
+    </tr>
+  ),
+  th: ({ children }: any) => (
+    <th className="px-3 py-2 text-xs font-semibold text-gray-900 dark:text-white">
+      {children}
+    </th>
+  ),
+  td: ({ children }: any) => (
+    <td className="px-3 py-2 text-xs text-gray-700 dark:text-gray-300">
+      {children}
+    </td>
+  ),
+  ul: ({ children }: any) => (
+    <ul className="my-2 ml-4 list-disc space-y-1 text-gray-800 dark:text-gray-200">
+      {children}
+    </ul>
+  ),
+  ol: ({ children }: any) => (
+    <ol className="my-2 ml-4 list-decimal space-y-1 text-gray-800 dark:text-gray-200">
+      {children}
+    </ol>
+  ),
+  li: ({ children }: any) => (
+    <li className="text-xs leading-relaxed">
+      {children}
+    </li>
+  ),
+};
 import { cn } from '../lib/utils';
 import PlanView from './PlanView';
 import { ToolCallsSection, ToolCallEntry } from './ui/tool-calls-section';
@@ -117,7 +169,7 @@ export function ChatMessage({ message, currentWorkflow, pendingStep, onApprove, 
               </div>
             ) : isAssistant ? (
               <div className="prose prose-sm dark:prose-invert max-w-none text-[12px] leading-relaxed prose-headings:text-[14px] prose-headings:font-bold prose-headings:mt-2 prose-headings:mb-1 prose-p:my-1 prose-ul:my-1 prose-li:my-0.5">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown remarkPlugins={[gfmPlugin]} components={markdownComponents}>
                   {displayContent}
                 </ReactMarkdown>
               </div>

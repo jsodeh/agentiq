@@ -61,7 +61,7 @@ class WorkspaceBoundary extends Component<{ children: ReactNode }, { failed: boo
 
   render() {
     if (this.state.failed) {
-      return <main className="grid min-h-screen place-items-center bg-dark p-6 text-center text-white"><div className="max-w-md rounded-2xl border border-midGray/50 bg-white/[0.03] p-8"><h1 className="text-xl font-bold">Your workspace needs a refresh</h1><p className="mt-2 text-sm text-midGray">The workspace UI could not load in this window. Refresh the app to continue.</p><button onClick={() => window.location.assign('/workspace')} className="mt-5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold">Open workspace</button></div></main>;
+      return <main className="grid min-h-screen place-items-center bg-dark p-6 text-center text-white"><div className="max-w-md rounded-2xl border border-midGray/50 bg-white/[0.03] p-8"><h1 className="text-xl font-bold">Your workspace needs a refresh</h1><p className="mt-2 text-sm text-midGray">The workspace UI encountered a refresh request. Click below to reload.</p><button onClick={() => window.location.reload()} className="mt-5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold">Reload workspace</button></div></main>;
     }
     return this.props.children;
   }
@@ -75,6 +75,11 @@ function WorkspaceContent() {
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
   const [currentTaskId, setCurrentTaskId] = useState<number | null>(null);
   const currentConversationIdRef = useRef<number | null>(null);
+  const activeTurnMsgIdRef = useRef<string | null>(null);
+
+  const getActiveAssistantMsgId = (taskId: number) => {
+    return activeTurnMsgIdRef.current || `task-run-${taskId}`;
+  };
 
   useEffect(() => {
     currentConversationIdRef.current = currentConversationId;
@@ -125,7 +130,7 @@ function WorkspaceContent() {
         setWorkingText('Generating response…');
 
         setMessages((current) => {
-          const activeMsgId = `task-run-${taskId}`;
+          const activeMsgId = getActiveAssistantMsgId(taskId);
           const existing = current.find((m) => m.id === activeMsgId);
 
           if (existing) {
@@ -176,7 +181,7 @@ function WorkspaceContent() {
           };
 
           setMessages((current) => {
-            const activeMsgId = `task-run-${taskId}`;
+            const activeMsgId = getActiveAssistantMsgId(taskId);
             const existing = current.find((m) => m.id === activeMsgId);
 
             if (existing) {
@@ -216,7 +221,7 @@ function WorkspaceContent() {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           };
           setMessages((current) => {
-            const activeMsgId = `task-run-${parentTaskId}`;
+            const activeMsgId = getActiveAssistantMsgId(parentTaskId);
             return current.map((m) =>
               m.id === activeMsgId
                 ? { ...m, subAgentLogs: [...(m.subAgentLogs || []), logEntry] }
@@ -231,7 +236,7 @@ function WorkspaceContent() {
         setWorkingText(description || `Executing ${tool}…`);
         
         setMessages((current) => {
-          const activeMsgId = `task-run-${taskId}`;
+          const activeMsgId = getActiveAssistantMsgId(taskId);
           const existing = current.find((m) => m.id === activeMsgId);
           const newToolCall = {
             tool_name: tool || 'unknown_tool',
@@ -268,7 +273,7 @@ function WorkspaceContent() {
         if (!isCurrentContext(taskId)) return;
         console.log('[Workspace] Action completed:', tool);
         setMessages((current) => {
-          const activeMsgId = `task-run-${taskId}`;
+          const activeMsgId = getActiveAssistantMsgId(taskId);
           const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
           return current.map((m) => {
             if (m.id === activeMsgId && m.toolCalls) {
@@ -316,7 +321,7 @@ function WorkspaceContent() {
 
         // Standard error handling (non-upgrade errors)
         setMessages((current) => {
-          const activeMsgId = `task-run-${taskId}`;
+          const activeMsgId = getActiveAssistantMsgId(taskId);
           return current.map((m) => {
             if (m.id === activeMsgId && m.toolCalls) {
               const updatedCalls = m.toolCalls.map((tc) =>
@@ -337,7 +342,7 @@ function WorkspaceContent() {
         if (!isCurrentContext(taskId)) return;
         console.log('[Workspace] Task completed:', taskId);
         setMessages((current) => {
-          const activeMsgId = `task-run-${taskId}`;
+          const activeMsgId = getActiveAssistantMsgId(taskId);
           const resultText = result?.plan?.reasoning || result?.output || '';
           const existing = current.find((m) => m.id === activeMsgId);
 
@@ -396,7 +401,7 @@ function WorkspaceContent() {
               };
 
               setMessages((current) => {
-                const activeMsgId = `task-run-${taskId}`;
+                const activeMsgId = getActiveAssistantMsgId(taskId);
                 const existing = current.find((m) => m.id === activeMsgId);
 
                 if (existing) {
@@ -463,8 +468,15 @@ function WorkspaceContent() {
   };
 
   const submitTask = async (description: string) => {
-    const msgId = `user-${Date.now()}`;
-    setMessages((current) => [...current, { id: msgId, role: 'user', content: description }]);
+    const userMsgId = `user-${Date.now()}`;
+    const assistantMsgId = `assistant-turn-${Date.now()}`;
+    activeTurnMsgIdRef.current = assistantMsgId;
+
+    setMessages((current) => [
+      ...current,
+      { id: userMsgId, role: 'user', content: description },
+      { id: assistantMsgId, role: 'assistant', content: '' },
+    ]);
     setWorkingText('Thinking…');
     setIsWorking(true);
 
@@ -490,24 +502,11 @@ function WorkspaceContent() {
       });
 
       setMessages((current) => {
-        const activeMsgId = `task-run-${conversationId}`;
-        const existing = current.find((m) => m.id === activeMsgId);
-        if (existing) {
-          return current.map((m) =>
-            m.id === activeMsgId
-              ? { ...m, content: response.content }
-              : m
-          );
-        } else {
-          return [
-            ...current,
-            {
-              id: `reply-${response.message_id}`,
-              role: 'assistant',
-              content: response.content,
-            },
-          ];
-        }
+        return current.map((m) =>
+          m.id === assistantMsgId
+            ? { ...m, content: response.content || m.content }
+            : m
+        );
       });
     } catch (error) {
       console.error('[Workspace] Chat error:', error);
@@ -522,6 +521,7 @@ function WorkspaceContent() {
       ]);
     } finally {
       setIsWorking(false);
+      activeTurnMsgIdRef.current = null;
     }
   };
 

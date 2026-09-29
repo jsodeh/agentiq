@@ -101,10 +101,11 @@ impl ToolExecutor for SubAgentDispatcherTool {
                 message: "Missing required parameter 'task_description'".to_string(),
             })?;
 
+        let task_summary: String = task_description.chars().take(100).collect();
         info!(
             "SubAgentDispatcher: Delegating to '{}' with task: {}",
             subagent_id,
-            &task_description[..task_description.len().min(100)]
+            task_summary
         );
 
         // 1. Look up the sub-agent profile
